@@ -1,0 +1,145 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Journal Scout - 期刊详情</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="detail-page">
+  <header class="hero hero--detail">
+    <div class="hero__content">
+      <a id="backLink" class="back-link" href="./index.html">← 返回查询</a>
+      <p class="eyebrow">Journal Profile</p>
+      <h1 id="title">加载中...</h1>
+      <p class="subtitle" id="subtitle">正在读取期刊信息</p>
+      <div class="tags" id="topTags"></div>
+    </div>
+  </header>
+
+  <main class="detail-main">
+    <section class="panel panel--wide panel--core">
+      <h2>核心信息</h2>
+      <div class="detail-grid detail-grid--wide" id="coreGrid"></div>
+    </section>
+
+    <section class="panel panel--wide panel--spotlight">
+      <h2>期刊概览</h2>
+      <div class="spotlight-layout">
+        <div class="spotlight-visual">
+          <div class="spotlight-cover" id="spotlightCover"></div>
+          <div class="detail-grid detail-grid--wide spotlight-grid spotlight-grid--under-cover" id="spotlightGrid">
+            <div class="kv">
+              <div class="k">出版商</div>
+              <div class="v" id="spotPublisher">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">是否OA</div>
+              <div class="v" id="spotOA">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">创刊参考年</div>
+              <div class="v" id="spotPublishYear">-</div>
+            </div>
+          </div>
+        </div>
+        <div class="spotlight-content">
+          <div class="spotlight-link-row">
+            <a id="journalWebsite" class="spotlight-link" href="#" target="_blank" rel="noopener noreferrer">访问期刊官网</a>
+          </div>
+          <div class="spotlight-top">
+            <aside class="citescore-card" id="citeScoreCard">
+              <div class="citescore-kicker">
+                CiteScore 评分
+                <button class="inline-info" type="button" data-info="citescore" aria-label="查看数据说明">?</button>
+              </div>
+              <div class="citescore-value-row">
+                <span class="citescore-value" id="citeScoreValue">-</span>
+                <span class="citescore-unit">分</span>
+              </div>
+              <div class="citescore-metrics" id="citeScoreMetrics"></div>
+              <div class="citescore-stars" id="citeScoreStars"></div>
+              <div class="citescore-percent-row">
+                <span class="citescore-percent-label" id="citeScorePercentLabel">学科百分位</span>
+                <span class="citescore-percent-value" id="citeScorePercentValue">-</span>
+              </div>
+              <div class="citescore-percent-track"><span id="citeScorePercentFill"></span></div>
+              <div class="citescore-breakdown" id="citeScoreBreakdown"></div>
+              <div class="citescore-meta" id="citeScoreMeta">正在加载评分…</div>
+              <div class="citescore-source" id="citeScoreSource">来源：待识别</div>
+            </aside>
+          </div>
+          <div class="spotlight-summary-wrap">
+            <p class="spotlight-summary" id="journalSummary"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel--wide panel--trend">
+      <h2>历年评价趋势</h2>
+      <div class="history-grid">
+        <div class="history-card">
+          <div class="history-card-head">
+            <h3>IF 历年变化</h3>
+            <button class="chart-zoom-btn" type="button" data-chart-zoom="ifTrendChart" data-chart-title="IF 历年变化" data-tip="点击放大" aria-label="放大 IF 历年变化图">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <line x1="16" y1="16" x2="21" y2="21"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="ifTrendChart" class="if-trend-chart"></div>
+        </div>
+        <div class="history-card">
+          <div class="history-card-head">
+            <h3>中科院分区变化</h3>
+            <button class="chart-zoom-btn" type="button" data-chart-zoom="casTrendChart" data-chart-title="中科院分区变化" data-tip="点击放大" aria-label="放大中科院分区变化图">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <line x1="16" y1="16" x2="21" y2="21"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="casTrendChart" class="cas-trend-chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel--wide panel--hq">
+      <h2>科协高质量期刊分级 <button class="info-dot" type="button" data-info="hq" aria-label="查看数据说明">?</button></h2>
+      <div class="detail-grid" id="hqMetaGrid"></div>
+      <div id="hqRecordList" class="hq-record-list"></div>
+    </section>
+
+    <section class="panel panel--wide panel--related">
+      <h2>相近期刊</h2>
+      <div id="relatedList" class="related-list"></div>
+    </section>
+  </main>
+
+  <footer class="foot foot--center">
+    <span id="genInfo"></span>
+  </footer>
+
+  <div id="sourceModal" class="source-modal" hidden>
+    <div class="source-modal__backdrop" data-close-source></div>
+    <div class="source-modal__card" role="dialog" aria-modal="true" aria-labelledby="sourceModalTitle">
+      <button id="sourceModalClose" class="source-modal__close" type="button" aria-label="关闭">×</button>
+      <h3 id="sourceModalTitle">数据说明</h3>
+      <div id="sourceModalBody" class="source-modal__body"></div>
+    </div>
+  </div>
+
+  <div id="chartModal" class="chart-modal" hidden>
+    <div class="chart-modal__backdrop" data-close-chart></div>
+    <div class="chart-modal__card" role="dialog" aria-modal="true" aria-labelledby="chartModalTitle">
+      <button id="chartModalClose" class="chart-modal__close" type="button" aria-label="关闭">×</button>
+      <h3 id="chartModalTitle">图表大图</h3>
+      <div id="chartModalBody" class="chart-modal__body"></div>
+    </div>
+  </div>
+
+  <script src="./detail.js"></script>
+</body>
+</html>

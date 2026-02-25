@@ -1,0 +1,49 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Journal Scout - 期刊查询</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="search-page">
+  <main class="search-main">
+    <section class="search-shell search-shell--single">
+      <h1 class="single-title">期刊查询</h1>
+      <div class="search-head">
+        <span class="search-head__label">Journal Scout</span>
+        <button id="cmdTrigger" class="cmd-trigger" type="button" aria-label="打开命令面板">⌘K</button>
+      </div>
+      <div class="search-box search-box--single">
+        <input
+          id="searchInput"
+          autocomplete="off"
+          placeholder="输入期刊名 / ISSN / CN号（如 Nature、0028-0836、11-2038/G3）"
+        />
+      </div>
+      <p class="search-tip">输入后出现联想结果，回车可进入详情；`Ctrl/Cmd + K` 打开命令面板</p>
+      <div id="activeFilter" class="active-filter" hidden></div>
+      <div id="suggestionPanel" class="suggestion-panel" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="foot foot--center">
+    <span id="genInfo"></span>
+    <a class="foot-link" href="./hq_stats.html">科协目录核对</a>
+  </footer>
+
+  <div id="cmdModal" class="cmd-modal" hidden>
+    <div class="cmd-modal__backdrop" data-close-cmd></div>
+    <div class="cmd-modal__card" role="dialog" aria-modal="true" aria-labelledby="cmdTitle">
+      <div class="cmd-modal__head">
+        <h2 id="cmdTitle">命令面板</h2>
+        <button id="cmdClose" class="cmd-modal__close" type="button" aria-label="关闭">×</button>
+      </div>
+      <input id="cmdInput" class="cmd-input" placeholder="输入命令，如 > filter IF > 10" />
+      <div id="cmdList" class="cmd-list"></div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
