@@ -92,6 +92,11 @@ const els = {
 };
 const homepagePreviewImageCache = new Map();
 const annualArticlesSeriesCache = new Map();
+const pageState = {
+  journal: null,
+  latestCas: null,
+  openAlexSource: null,
+};
 
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
@@ -435,6 +440,20 @@ function getElsevierApiKey() {
   return (fromStorage || fromWindow).trim();
 }
 
+function setElsevierApiKey(rawKey) {
+  try {
+    const key = String(rawKey || "").trim();
+    if (key) {
+      localStorage.setItem("elsevier_api_key", key);
+    } else {
+      localStorage.removeItem("elsevier_api_key");
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function fetchElsevierViaLocalProxy(issn, apiKey) {
   const normalizedIssn = String(issn || "").trim();
   if (!normalizedIssn) return { ok: false, reason: "missing_issn", payload: null };
@@ -639,6 +658,33 @@ function renderCiteScoreBreakdown(subjects, isProxy = false) {
   els.citeScoreBreakdown.innerHTML = header + body + extra;
 }
 
+function renderCiteScoreSourceLine({ sourceText = "", isProxy = false, reason = "" } = {}) {
+  if (!els.citeScoreSource) return;
+  const hasKey = Boolean(getElsevierApiKey());
+  const normalizedReason = String(reason || "").trim();
+  const reasonText = normalizedReason ? mapElsevierFailureReason(normalizedReason) : "";
+
+  let displayText = String(sourceText || "").trim() || "数据来源：待更新";
+  if (isProxy && reasonText) {
+    displayText = `${displayText} · ${reasonText}`;
+  }
+
+  const actionButtons = [];
+  if (isProxy) {
+    actionButtons.push(
+      `<button class="citescore-inline-btn" type="button" data-citescore-config="1">${hasKey ? "更新Key" : "配置Key"}</button>`
+    );
+    if (hasKey) {
+      actionButtons.push(`<button class="citescore-inline-btn" type="button" data-citescore-refresh="1">重试</button>`);
+    }
+  }
+
+  const actionsHtml = actionButtons.length
+    ? `<span class="citescore-inline-actions">${actionButtons.join("")}</span>`
+    : "";
+  els.citeScoreSource.innerHTML = `<span>${escapeHtml(displayText)}</span>${actionsHtml}`;
+}
+
 function setCiteScoreCardState({
   score = null,
   year = "",
@@ -649,6 +695,7 @@ function setCiteScoreCardState({
   isProxy = false,
   meta = "",
   source = "",
+  reason = "",
 } = {}) {
   if (!els.citeScoreCard) return;
   const hasScore = score !== null && score !== undefined && Number.isFinite(Number(score));
@@ -675,7 +722,11 @@ function setCiteScoreCardState({
 
     const yearLabel = year ? `${year} 年` : "最新年度";
     els.citeScoreMeta.textContent = meta || `更新：${yearLabel} · CiteScore ${numericScore.toFixed(2)}`;
-    els.citeScoreSource.textContent = source || "数据来源：Scopus CiteScore";
+    renderCiteScoreSourceLine({
+      sourceText: source || "数据来源：Scopus CiteScore",
+      isProxy,
+      reason,
+    });
     renderCiteScoreBreakdown(subjects, isProxy);
   } else {
     els.citeScoreStars.innerHTML = "<span class='citescore-empty'>暂无评分</span>";
@@ -684,7 +735,11 @@ function setCiteScoreCardState({
     els.citeScorePercentValue.textContent = "-";
     els.citeScorePercentFill.style.width = "0%";
     els.citeScoreMeta.textContent = meta || "暂无 CiteScore 数据";
-    els.citeScoreSource.textContent = source || "数据来源：待更新";
+    renderCiteScoreSourceLine({
+      sourceText: source || "数据来源：待更新",
+      isProxy,
+      reason,
+    });
     renderCiteScoreBreakdown(subjects, isProxy);
   }
 }
@@ -1257,6 +1312,8 @@ async function fetchElsevierCiteScore(j) {
 function mapElsevierFailureReason(reason) {
   const r = String(reason || "").trim();
   if (!r) return "";
+  if (r === "openalex_unavailable") return "无法识别期刊来源";
+  if (r === "citescore_request_failed") return "请求失败";
   if (r === "missing_api_key") return "未配置 Elsevier API Key";
   if (r === "proxy_missing_api_key") return "本地代理未配置 ELSEVIER_API_KEY，且请求头未携带 Key";
   if (r === "missing_issn") return "缺少 ISSN";
@@ -1285,7 +1342,8 @@ function buildOpenAlexProxyCiteScore(source, elsevierReason = "") {
       snip: null,
       source: "数据来源：OpenAlex",
       isProxy: true,
-      meta: reasonText ? "当前暂未获取到官方 CiteScore 数据。" : "当前暂未获取到官方 CiteScore 数据。",
+      reason: elsevierReason || "",
+      meta: reasonText ? `当前暂未获取到官方 CiteScore 数据（${reasonText}）。` : "当前暂未获取到官方 CiteScore 数据。",
     };
   }
 
@@ -1305,7 +1363,12 @@ function buildOpenAlexProxyCiteScore(source, elsevierReason = "") {
     snip: null,
     source: "数据来源：OpenAlex（参考值）",
     isProxy: true,
-    meta: pieces.length ? `参考信息：${pieces.join(" · ")}` : "当前显示的是参考值。",
+    reason: elsevierReason || "",
+    meta: reasonText
+      ? `当前显示的是参考值（${reasonText}）。${pieces.length ? ` 参考信息：${pieces.join(" · ")}` : ""}`
+      : pieces.length
+      ? `参考信息：${pieces.join(" · ")}`
+      : "当前显示的是参考值。",
   };
 }
 
@@ -1315,8 +1378,57 @@ async function fetchCiteScoreMetric(j, source) {
   return buildOpenAlexProxyCiteScore(source, scopus.reason || "");
 }
 
+async function refreshCiteScoreForCurrentJournal() {
+  const j = pageState.journal;
+  if (!j) return;
+
+  let source = pageState.openAlexSource;
+  if (!source) {
+    source = await fetchOpenAlexProfile(j);
+    pageState.openAlexSource = source || null;
+  }
+
+  if (!source) {
+    setCiteScoreCardState({
+      score: null,
+      isProxy: true,
+      year: "",
+      percentile: null,
+      meta: "无法获取期刊来源信息，暂不能刷新 CiteScore。",
+      source: "数据来源：暂不可用",
+      reason: "openalex_unavailable",
+    });
+    return;
+  }
+
+  setCiteScoreCardState({
+    score: null,
+    isProxy: false,
+    year: "",
+    percentile: null,
+    meta: "正在刷新 CiteScore…",
+    source: "数据来源：正在更新",
+    reason: "",
+  });
+
+  const citeScore = await fetchCiteScoreMetric(j, source);
+  setCiteScoreCardState({
+    score: citeScore.score,
+    year: citeScore.year,
+    percentile: citeScore.percentile,
+    subjects: citeScore.subjects || [],
+    sjr: citeScore.sjr,
+    snip: citeScore.snip,
+    isProxy: citeScore.isProxy,
+    meta: citeScore.meta || "",
+    source: citeScore.source || "",
+    reason: citeScore.reason || "",
+  });
+}
+
 async function enrichSpotlightFromOpenAlex(j, latestCas) {
   const source = await fetchOpenAlexProfile(j);
+  pageState.openAlexSource = source || null;
   if (!source) {
     const fallbackWebsite = resolveWebsite(j);
     if (fallbackWebsite) {
@@ -1336,6 +1448,7 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
       percentile: null,
       meta: "暂无 CiteScore 数据",
       source: "数据来源：暂不可用",
+      reason: "openalex_unavailable",
     });
     renderAnnualArticlesTrend([]);
     return;
@@ -1389,6 +1502,7 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
     isProxy: citeScore.isProxy,
     meta: citeScore.meta || "",
     source: citeScore.source || "",
+    reason: citeScore.reason || "",
   });
 
   const intro = await fetchJournalIntro(j, source, wikidataEntity);
@@ -1413,6 +1527,7 @@ function renderSpotlight(j, latestCas, indexTypeText = "-") {
     percentile: null,
     meta: "正在加载 CiteScore…",
     source: "数据来源：正在更新",
+    reason: "",
   });
 }
 
@@ -1429,6 +1544,9 @@ function renderRow(j, meta) {
   const casLabel = casYear ? `中科院分区（${casYear}）` : "中科院分区";
   const warningLabel = j.warning_latest_year ? `中科院预警 (${j.warning_latest_year})` : "中科院预警";
   const latestCas = [...(Array.isArray(j.cas_history) ? j.cas_history : [])].sort((a, b) => yearNum(b.year) - yearNum(a.year))[0];
+  pageState.journal = j;
+  pageState.latestCas = latestCas || null;
+  pageState.openAlexSource = null;
   const casText = j.cas_2025 ? `${j.cas_2025}${j.is_top === true ? " (Top)" : ""}` : "-";
   const casSubText = formatCASSubcategoriesMultiline(latestCas?.subcategories);
   const indexSignals = collectIndexSignals(j, latestCas);
@@ -1453,6 +1571,7 @@ function renderRow(j, meta) {
       percentile: null,
       meta: "CiteScore 请求失败",
       source: "数据来源：暂不可用",
+      reason: "citescore_request_failed",
     });
   });
 
@@ -2091,7 +2210,31 @@ function closeChartModal() {
 }
 
 function bindSourceModalEvents() {
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
+    const keyTrigger = e.target.closest("[data-citescore-config]");
+    if (keyTrigger) {
+      const current = getElsevierApiKey();
+      const input = window.prompt(
+        "请输入 Elsevier API Key（仅保存在当前浏览器；留空可清除）",
+        current
+      );
+      if (input !== null) {
+        const ok = setElsevierApiKey(input);
+        if (!ok) {
+          window.alert("当前浏览器不支持本地保存 API Key。");
+          return;
+        }
+        await refreshCiteScoreForCurrentJournal();
+      }
+      return;
+    }
+
+    const retryTrigger = e.target.closest("[data-citescore-refresh]");
+    if (retryTrigger) {
+      await refreshCiteScoreForCurrentJournal();
+      return;
+    }
+
     const infoTrigger = e.target.closest("[data-info]");
     if (infoTrigger) {
       openSourceModal(infoTrigger.dataset.info || "core");
