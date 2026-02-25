@@ -6,13 +6,36 @@ const state = {
   meta: null,
 };
 
+const DATA_PATHS = [
+  "./data/journals.json",
+  "/data/journals.json",
+  "./xuankan/demo_site/data/journals.json",
+  "/xuankan/demo_site/data/journals.json",
+];
+
+const DATA_PATH_CACHE_KEY = "journal_scout_data_path";
+
+const TAG_TEXT = {
+  casPrefix: "\u4e2d\u79d1\u9662",
+  hqPrefix: "\u79d1\u534f-",
+  pku: "\u5317\u5927\u6838\u5fc3",
+  cssci: "CSSCI",
+  cssciExt: "CSSCI(\u6269\u5c55)",
+  cssciSourceType: "\u6765\u6e90\u7248",
+  cssciExpandType: "\u6269\u5c55\u7248",
+  cscdCore: "\u6838\u5fc3\u5e93",
+  cscdExt: "\u6269\u5c55\u5e93",
+  cscdPrefix: "CSCD-",
+  warning: "\u4e2d\u79d1\u9662\u9884\u8b66",
+  empty: "\u65e0\u6838\u5fc3\u6807\u7b7e",
+};
+
 const els = {
   searchShell: document.querySelector(".search-shell"),
   searchInput: document.getElementById("searchInput"),
   activeFilter: document.getElementById("activeFilter"),
   suggestionPanel: document.getElementById("suggestionPanel"),
   genInfo: document.getElementById("genInfo"),
-  cmdTrigger: document.getElementById("cmdTrigger"),
   cmdModal: document.getElementById("cmdModal"),
   cmdClose: document.getElementById("cmdClose"),
   cmdInput: document.getElementById("cmdInput"),
@@ -28,20 +51,31 @@ function escapeHtml(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
-function getHaystack(r) {
-  return [r.title, r.issn, r.eissn, r.cn_number].join(" ").toLowerCase();
+function getHaystack(row) {
+  return [row.title, row.issn, row.eissn, row.cn_number].join(" ").toLowerCase();
 }
 
-function scoreRow(r, query) {
+function yearNum(v) {
+  const n = Number(String(v || "").replace(/[^\d]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatIFAcademicYear(rawYear) {
+  const y = yearNum(rawYear);
+  if (!y) return "";
+  return `${y}-${y + 1}\u5e74\u5ea6`;
+}
+
+function scoreRow(row, query) {
   const q = query.toLowerCase();
-  const title = (r.title || "").toLowerCase();
-  const issn = (r.issn || "").toLowerCase();
-  const eissn = (r.eissn || "").toLowerCase();
-  const cn = (r.cn_number || "").toLowerCase();
+  const title = String(row.title || "").toLowerCase();
+  const issn = String(row.issn || "").toLowerCase();
+  const eissn = String(row.eissn || "").toLowerCase();
+  const cn = String(row.cn_number || "").toLowerCase();
 
   let score = 0;
   if (title === q) score += 1000;
@@ -49,27 +83,116 @@ function scoreRow(r, query) {
   if (title.startsWith(q)) score += 450;
   if (issn.startsWith(q) || eissn.startsWith(q) || cn.startsWith(q)) score += 330;
   if (title.includes(q)) score += 180;
-  if (getHaystack(r).includes(q)) score += 70;
-  if (r.if_2023 !== null && r.if_2023 !== undefined) score += Math.min(80, Number(r.if_2023) / 8);
-  if (r.jcr_quartile === "Q1") score += 40;
-  if (r.cas_2025 === "1区") score += 30;
+  if (getHaystack(row).includes(q)) score += 70;
+  if (row.if_2023 !== null && row.if_2023 !== undefined) score += Math.min(80, Number(row.if_2023) / 8);
+  if (row.jcr_quartile === "Q1") score += 40;
+  if (String(row.cas_2025 || "").trim() === `1\u533a`) score += 30;
   return score;
+}
+
+function pushTag(tags, text, cls) {
+  const t = String(text || "").trim();
+  if (!t) return;
+  if (tags.some((x) => x.text === t)) return;
+  tags.push({ text: t, cls });
+}
+
+function collectCnkiWosTokens(rowTags) {
+  const known = new Set(["SCI", "SCIE", "SSCI", "ESCI", "AHCI"]);
+  const out = new Set();
+
+  for (const raw of rowTags) {
+    const upper = String(raw || "").toUpperCase();
+    const parts = upper.replace(/[^A-Z]+/g, " ").split(/\s+/).filter(Boolean);
+    for (const p of parts) {
+      if (known.has(p)) out.add(p);
+    }
+    if (upper.includes("SCIE")) out.add("SCIE");
+    if (upper.includes("SSCI")) out.add("SSCI");
+    if (upper.includes("ESCI")) out.add("ESCI");
+    if (upper.includes("AHCI")) out.add("AHCI");
+    if (/\bSCI\b/.test(upper.replace(/[^A-Z]/g, " "))) out.add("SCI");
+  }
+
+  return [...out];
+}
+
+function deriveHqLevel(row, rowTags) {
+  const raw = String(row.hq_level || "").trim();
+  if (raw) return raw;
+  for (const tag of rowTags) {
+    const m = String(tag).trim().match(/^HQ-(.+)$/i);
+    if (m && m[1]) return m[1].trim().toUpperCase();
+  }
+  return "";
 }
 
 function buildPriorityTags(row) {
   const tags = [];
-  if (row.jcr_quartile) tags.push({ text: `JCR ${row.jcr_quartile}`, cls: "tag--jcr" });
+  const rowTags = Array.isArray(row.tags)
+    ? row.tags.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
+
+  if (row.jcr_quartile) {
+    pushTag(tags, `JCR ${row.jcr_quartile}`, "tag--jcr");
+  }
+
   if (row.cas_2025) {
     const suffix = row.is_top === true ? " (Top)" : "";
-    tags.push({ text: `中科院${row.cas_2025}${suffix}`, cls: "tag--cas" });
+    pushTag(tags, `${TAG_TEXT.casPrefix}${row.cas_2025}${suffix}`, "tag--cas");
   }
-  if (row.hq_level) tags.push({ text: `科协-${row.hq_level}`, cls: "tag--hq" });
-  if (row.warning_latest) tags.push({ text: "中科院预警", cls: "tag--warn" });
+
+  const hqLevel = deriveHqLevel(row, rowTags);
+  if (hqLevel) {
+    pushTag(tags, `${TAG_TEXT.hqPrefix}${hqLevel}`, "tag--hq");
+  }
+
+  if (row.pku_core === true || rowTags.includes(TAG_TEXT.pku)) {
+    pushTag(tags, TAG_TEXT.pku, "tag--pku");
+  }
+
+  let cssciType = String(row.cssci_type || "").trim();
+  if (!cssciType) {
+    if (rowTags.includes(TAG_TEXT.cssciExt) || rowTags.includes("CSSCI\u6269\u5c55")) {
+      cssciType = TAG_TEXT.cssciExpandType;
+    } else if (rowTags.includes(TAG_TEXT.cssci)) {
+      cssciType = TAG_TEXT.cssciSourceType;
+    }
+  }
+  if (cssciType) {
+    const text = cssciType === TAG_TEXT.cssciExpandType ? TAG_TEXT.cssciExt : TAG_TEXT.cssci;
+    pushTag(tags, text, "tag--cssci");
+  }
+
+  let cscdType = String(row.cscd_type || "").trim();
+  if (!cscdType) {
+    const cscdTag = rowTags.find((t) => t.startsWith(TAG_TEXT.cscdPrefix));
+    if (cscdTag) cscdType = cscdTag.slice(TAG_TEXT.cscdPrefix.length).trim();
+    else if (rowTags.includes("CSCD(\u6838\u5fc3)") || rowTags.includes("CSCD\u6838\u5fc3")) cscdType = TAG_TEXT.cscdCore;
+    else if (rowTags.includes("CSCD(\u6269\u5c55)") || rowTags.includes("CSCD\u6269\u5c55")) cscdType = TAG_TEXT.cscdExt;
+    else if (rowTags.includes("CSCD")) cscdType = TAG_TEXT.cscdCore;
+  }
+  if (cscdType) {
+    pushTag(tags, `${TAG_TEXT.cscdPrefix}${cscdType}`, "tag--cscd");
+  }
+
+  for (const token of collectCnkiWosTokens(rowTags)) {
+    pushTag(tags, token, "tag--wos");
+  }
+
+  if (rowTags.some((t) => String(t).toUpperCase() === "EI")) {
+    pushTag(tags, "EI", "tag--ei");
+  }
+
+  if (row.warning_latest) {
+    pushTag(tags, TAG_TEXT.warning, "tag--warn");
+  }
+
   return tags;
 }
 
 function renderTagList(tags) {
-  if (!tags.length) return "<span class='tag tag--empty'>无核心标签</span>";
+  if (!tags.length) return `<span class="tag tag--empty">${TAG_TEXT.empty}</span>`;
   return tags.map((t) => `<span class="tag ${t.cls}">${escapeHtml(t.text)}</span>`).join("");
 }
 
@@ -78,13 +201,13 @@ function findSuggestions(query, limit = 12) {
   if (!q) return [];
 
   return state.rows
-    .filter((r) => getHaystack(r).includes(q.toLowerCase()))
-    .filter((r) => {
+    .filter((row) => getHaystack(row).includes(q.toLowerCase()))
+    .filter((row) => {
       if (state.minIF === null) return true;
-      const v = Number(r.if_2023);
+      const v = Number(row.if_2023);
       return Number.isFinite(v) && v >= state.minIF;
     })
-    .map((r) => ({ row: r, score: scoreRow(r, q) }))
+    .map((row) => ({ row, score: scoreRow(row, q) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
@@ -94,18 +217,19 @@ function findSuggestions(query, limit = 12) {
 function suggestionItem(row, idx) {
   const ids = [row.issn, row.cn_number].filter(Boolean).join(" / ");
   const tagsHtml = renderTagList(buildPriorityTags(row));
-  const ifYear = row.if_year ? `(${row.if_year})` : "";
+  const ifYear = formatIFAcademicYear(row.if_year);
+  const ifYearText = ifYear ? `(${ifYear})` : "";
   const ifText = row.if_2023 === null || row.if_2023 === undefined ? "-" : safe(row.if_2023);
   const activeCls = idx === state.activeIndex ? "is-active" : "";
 
   return `
-    <button class="suggestion ${activeCls}" data-id="${row.id}" data-idx="${idx}" type="button">
+    <button class="suggestion ${activeCls}" data-id="${escapeHtml(String(row.id))}" data-idx="${idx}" type="button">
       <div class="suggestion__main">
-        <div class="suggestion__title">${escapeHtml(row.title || "未知期刊")}</div>
+        <div class="suggestion__title">${escapeHtml(row.title || "\u672a\u77e5\u671f\u520a")}</div>
         <div class="suggestion__meta">${escapeHtml(safe(ids))}</div>
       </div>
       <div class="suggestion__side">
-        <div class="suggestion__if">IF${escapeHtml(ifYear)} ${escapeHtml(ifText)}</div>
+        <div class="suggestion__if">IF${escapeHtml(ifYearText)} ${escapeHtml(ifText)}</div>
         <div class="tags">${tagsHtml}</div>
       </div>
     </button>
@@ -115,11 +239,13 @@ function suggestionItem(row, idx) {
 function closeSuggestionPanel() {
   state.suggestions = [];
   state.activeIndex = -1;
+  if (!els.suggestionPanel) return;
   els.suggestionPanel.classList.remove("is-open");
   els.suggestionPanel.innerHTML = "";
 }
 
 function openSuggestionPanel() {
+  if (!els.suggestionPanel) return;
   els.suggestionPanel.classList.add("is-open");
 }
 
@@ -131,11 +257,13 @@ function gotoDetail(id, q = "") {
 }
 
 function ensureActiveVisible() {
+  if (!els.suggestionPanel) return;
   const active = els.suggestionPanel.querySelector(".suggestion.is-active");
   if (active) active.scrollIntoView({ block: "nearest" });
 }
 
 function renderSuggestions() {
+  if (!els.searchInput || !els.suggestionPanel) return;
   const q = els.searchInput.value.trim();
   if (!q) {
     closeSuggestionPanel();
@@ -147,11 +275,12 @@ function renderSuggestions() {
   openSuggestionPanel();
 
   if (!state.suggestions.length) {
-    els.suggestionPanel.innerHTML = "<p class='placeholder'>未找到匹配期刊，请尝试更完整的名称、ISSN 或 CN号</p>";
+    els.suggestionPanel.innerHTML =
+      "<p class='placeholder'>\u672a\u627e\u5230\u5339\u914d\u671f\u520a\uff0c\u8bf7\u5c1d\u8bd5\u66f4\u5b8c\u6574\u7684\u540d\u79f0\u3001ISSN \u6216 CN \u53f7</p>";
     return;
   }
 
-  els.suggestionPanel.innerHTML = state.suggestions.map((x, i) => suggestionItem(x, i)).join("");
+  els.suggestionPanel.innerHTML = state.suggestions.map((row, i) => suggestionItem(row, i)).join("");
   els.suggestionPanel.querySelectorAll(".suggestion").forEach((btn) => {
     btn.addEventListener("click", () => gotoDetail(Number(btn.dataset.id), q));
     btn.addEventListener("mouseenter", () => {
@@ -163,16 +292,20 @@ function renderSuggestions() {
 }
 
 function applyFilterHint() {
+  if (!els.activeFilter) return;
   if (state.minIF === null) {
     els.activeFilter.hidden = true;
     els.activeFilter.textContent = "";
     return;
   }
   els.activeFilter.hidden = false;
-  els.activeFilter.innerHTML = `<span class="status-badge status-badge--neutral">筛选中：IF ≥ ${escapeHtml(String(state.minIF))}</span>`;
+  els.activeFilter.innerHTML = `<span class="status-badge status-badge--neutral">\u7b5b\u9009\u4e2d\uff1aIF &gt;= ${escapeHtml(String(
+    state.minIF
+  ))}</span>`;
 }
 
 function restoreQueryFromUrl() {
+  if (!els.searchInput) return;
   const params = new URLSearchParams(window.location.search);
   const q = params.get("q");
   if (!q) return;
@@ -181,6 +314,7 @@ function restoreQueryFromUrl() {
 }
 
 function openCommandPalette() {
+  if (!els.cmdModal || !els.cmdInput || !els.cmdList) return;
   els.cmdModal.hidden = false;
   els.cmdInput.value = "";
   renderCommandList("");
@@ -188,6 +322,7 @@ function openCommandPalette() {
 }
 
 function closeCommandPalette() {
+  if (!els.cmdModal) return;
   els.cmdModal.hidden = true;
 }
 
@@ -206,17 +341,18 @@ function commandEntries() {
   return [
     {
       key: "hq",
-      title: "打开科协目录核对",
-      desc: "跳转到 59 领域核对页面",
+      title: "\u6253\u5f00\u79d1\u534f\u76ee\u5f55\u6838\u5bf9",
+      desc: "\u8df3\u8f6c\u5230 59 \u9886\u57df\u76ee\u5f55\u6838\u5bf9\u9875",
       run: () => {
         window.location.href = "./hq_stats.html";
       },
     },
     {
       key: "clear",
-      title: "清空搜索框",
-      desc: "清空关键词并关闭联想面板",
+      title: "\u6e05\u7a7a\u641c\u7d22\u6846",
+      desc: "\u6e05\u7a7a\u5173\u952e\u8bcd\u5e76\u5173\u95ed\u8054\u60f3\u9762\u677f",
       run: () => {
+        if (!els.searchInput) return;
         els.searchInput.value = "";
         closeSuggestionPanel();
         els.searchInput.focus();
@@ -224,8 +360,8 @@ function commandEntries() {
     },
     {
       key: "reset-filter",
-      title: "清除 IF 筛选",
-      desc: "恢复不过滤的检索状态",
+      title: "\u6e05\u9664 IF \u7b5b\u9009",
+      desc: "\u6062\u590d\u4e0d\u5e26 IF \u9608\u503c\u7684\u8054\u60f3\u7ed3\u679c",
       run: () => {
         state.minIF = null;
         applyFilterHint();
@@ -234,8 +370,8 @@ function commandEntries() {
     },
     {
       key: "sample-nature",
-      title: "打开示例期刊 Nature",
-      desc: "快速查看高影响力期刊详情",
+      title: "\u6253\u5f00\u793a\u4f8b\u671f\u520a Nature",
+      desc: "\u5feb\u901f\u67e5\u770b Nature \u8be6\u60c5",
       run: () => {
         const row = state.rows.find((r) => String(r.title || "").toUpperCase() === "NATURE");
         if (row) gotoDetail(row.id, "Nature");
@@ -245,6 +381,7 @@ function commandEntries() {
 }
 
 function renderCommandList(input) {
+  if (!els.cmdList || !els.cmdInput) return;
   const filterValue = parseFilterCommand(input);
   let list = commandEntries();
 
@@ -252,8 +389,8 @@ function renderCommandList(input) {
     list = [
       {
         key: "filter-if",
-        title: `应用筛选：IF ≥ ${filterValue}`,
-        desc: "仅在联想结果中保留满足阈值的期刊",
+        title: `\u5e94\u7528\u7b5b\u9009\uff1aIF >= ${filterValue}`,
+        desc: "\u4ec5\u4fdd\u7559\u6ee1\u8db3\u9608\u503c\u7684\u671f\u520a\u8054\u60f3\u7ed3\u679c",
         run: () => {
           state.minIF = filterValue;
           applyFilterHint();
@@ -263,11 +400,16 @@ function renderCommandList(input) {
     ];
   } else if (input.trim()) {
     const q = input.trim().toLowerCase();
-    list = list.filter((x) => x.title.toLowerCase().includes(q) || x.desc.toLowerCase().includes(q) || x.key.includes(q));
+    list = list.filter(
+      (x) =>
+        x.title.toLowerCase().includes(q) ||
+        x.desc.toLowerCase().includes(q) ||
+        x.key.toLowerCase().includes(q)
+    );
   }
 
   if (!list.length) {
-    els.cmdList.innerHTML = "<p class='placeholder'>无可用命令</p>";
+    els.cmdList.innerHTML = "<p class='placeholder'>\u65e0\u53ef\u7528\u547d\u4ee4</p>";
     return;
   }
 
@@ -297,6 +439,7 @@ function renderCommandList(input) {
     const items = [...els.cmdList.querySelectorAll(".cmd-item")];
     if (!items.length) return;
     const current = items.findIndex((x) => x.classList.contains("is-active"));
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       const next = current < items.length - 1 ? current + 1 : 0;
@@ -326,6 +469,8 @@ function renderCommandList(input) {
 }
 
 function bindEvents() {
+  if (!els.searchInput || !els.suggestionPanel) return;
+
   els.searchInput.addEventListener("input", renderSuggestions);
   els.searchInput.addEventListener("focus", () => {
     if (els.searchInput.value.trim()) renderSuggestions();
@@ -355,8 +500,9 @@ function bindEvents() {
   });
 
   document.addEventListener("click", (e) => {
-    if (!els.searchShell.contains(e.target)) closeSuggestionPanel();
-    if (e.target.closest("[data-close-cmd]")) closeCommandPalette();
+    const target = e.target;
+    if (els.searchShell && target instanceof Node && !els.searchShell.contains(target)) closeSuggestionPanel();
+    if (target instanceof Element && target.closest("[data-close-cmd]")) closeCommandPalette();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -365,28 +511,76 @@ function bindEvents() {
       openCommandPalette();
       return;
     }
-    if (e.key === "Escape" && !els.cmdModal.hidden) closeCommandPalette();
+    if (e.key === "Escape" && els.cmdModal && !els.cmdModal.hidden) {
+      closeCommandPalette();
+    }
   });
 
-  els.cmdTrigger.addEventListener("click", openCommandPalette);
-  els.cmdClose.addEventListener("click", closeCommandPalette);
-  els.cmdInput.addEventListener("input", () => renderCommandList(els.cmdInput.value));
+  if (els.cmdClose) {
+    els.cmdClose.addEventListener("click", closeCommandPalette);
+  }
+  if (els.cmdInput) {
+    els.cmdInput.addEventListener("input", () => renderCommandList(els.cmdInput.value));
+  }
+}
+
+function dataPathCandidates() {
+  const remembered = window.localStorage.getItem(DATA_PATH_CACHE_KEY);
+  if (!remembered) return DATA_PATHS.slice();
+  const all = [remembered, ...DATA_PATHS];
+  return [...new Set(all)];
+}
+
+async function tryLoadPayload(path) {
+  const res = await fetch(path, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const payload = await res.json();
+  if (!payload || !Array.isArray(payload.journals)) {
+    throw new Error("invalid_payload");
+  }
+  return payload;
+}
+
+async function loadPayloadWithFallback() {
+  let lastError = null;
+  for (const path of dataPathCandidates()) {
+    try {
+      const payload = await tryLoadPayload(path);
+      window.localStorage.setItem(DATA_PATH_CACHE_KEY, path);
+      return payload;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("load_failed");
+}
+
+function showLoadError(err) {
+  console.error("Journal data load failed:", err);
+  openSuggestionPanel();
+  if (!els.suggestionPanel) return;
+  els.suggestionPanel.innerHTML =
+    "<p class='placeholder'>\u6570\u636e\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5237\u65b0\u91cd\u8bd5</p>";
 }
 
 async function bootstrap() {
-  const res = await fetch("./data/journals.json");
-  const payload = await res.json();
-  state.rows = payload.journals || [];
+  if (!els.searchInput || !els.suggestionPanel) return;
+  const payload = await loadPayloadWithFallback();
+  state.rows = payload.journals;
   state.meta = payload.meta || {};
-  els.genInfo.textContent = `数据更新时间：${state.meta.generated_at || "-"}`;
+
+  if (els.genInfo) {
+    els.genInfo.textContent = `\u6570\u636e\u66f4\u65b0\u65f6\u95f4\uff1a${state.meta.generated_at || "-"}`;
+  }
 
   applyFilterHint();
   bindEvents();
   restoreQueryFromUrl();
 }
 
-bootstrap().catch((err) => {
-  console.error(err);
-  openSuggestionPanel();
-  els.suggestionPanel.innerHTML = "<p class='placeholder'>数据加载失败，请刷新重试</p>";
-});
+bootstrap().catch(showLoadError);

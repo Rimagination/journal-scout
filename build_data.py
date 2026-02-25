@@ -5,6 +5,8 @@ import json
 import re
 import sqlite3
 import html as html_lib
+from urllib import request as urllib_request
+from urllib.error import URLError, HTTPError
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -15,6 +17,7 @@ OUT_DIR = Path(__file__).resolve().parent / "data"
 OUT_FILE = OUT_DIR / "journals.json"
 HQ_STATS_FILE = OUT_DIR / "hq_field_stats.json"
 SHOWJCR_DATA_SUBDIR = "中科院分区表及JCR原始数据文件"
+CNKI_SCHOLAR_JSON_URL = "https://gitee.com/kailangge/cnki-journals/raw/main/cnki_journals.json"
 
 
 ISSN_RE = re.compile(r"\b(\d{4})-?([\dXx]{4})\b")
@@ -94,6 +97,9 @@ class Journal:
     warning_latest: str = ""
     warning_latest_year: str = ""
     cscd_type: str = ""
+    pku_core: bool = False
+    cssci_type: str = ""
+    ei_indexed: bool = False
     if_history: List[Dict] = field(default_factory=list)
     cas_history: List[Dict] = field(default_factory=list)
     warning_history: List[Dict] = field(default_factory=list)
@@ -229,6 +235,9 @@ class Journal:
             "warning_latest": self.warning_latest,
             "warning_latest_year": self.warning_latest_year,
             "cscd_type": self.cscd_type,
+            "pku_core": self.pku_core,
+            "cssci_type": self.cssci_type,
+            "ei_indexed": self.ei_indexed,
             "if_history": if_history,
             "cas_history": cas_history,
             "warning_history": warning_history,
@@ -376,6 +385,12 @@ class JournalStore:
                 j.tags.append(j.cas_2025)
             if j.cscd_type:
                 j.tags.append(f"CSCD-{j.cscd_type}")
+            if j.pku_core:
+                j.tags.append("北大核心")
+            if j.cssci_type:
+                j.tags.append("CSSCI" if j.cssci_type == "来源版" else "CSSCI(扩展)")
+            if j.ei_indexed:
+                j.tags.append("EI")
             if j.hq_catalog:
                 j.tags.append("高质量目录")
             if j.hq_level:
@@ -957,6 +972,179 @@ def load_cscd_md(store: JournalStore) -> None:
         store.touch_index(j)
 
 
+def fetch_json_url(url: str, timeout: int = 30):
+    req = urllib_request.Request(
+        url,
+        headers={
+            "User-Agent": "JournalScoutDataBuilder/1.0",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return None
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+
+
+def normalize_tag_text(raw: str) -> str:
+    s = str(raw or "").strip()
+    s = s.replace("（", "(").replace("）", ")")
+    s = re.sub(r"\s+", "", s)
+    return s
+
+
+def pick_cssci_type(current: str, candidate: str) -> str:
+    cur = str(current or "").strip()
+    cand = str(candidate or "").strip()
+    if not cand:
+        return cur
+    if not cur:
+        return cand
+    rank = {"来源版": 1, "扩展版": 2}
+    return cand if rank.get(cand, 99) < rank.get(cur, 99) else cur
+
+
+def pick_cscd_type(current: str, candidate: str) -> str:
+    cur = str(current or "").strip()
+    cand = str(candidate or "").strip()
+    if not cand:
+        return cur
+    if not cur:
+        return cand
+    rank = {"核心库": 1, "扩展库": 2}
+    return cand if rank.get(cand, 99) < rank.get(cur, 99) else cur
+
+
+def extract_wos_tokens(raw: str) -> List[str]:
+    s = str(raw or "").upper().strip()
+    if not s:
+        return []
+    out: set[str] = set()
+    parts = [x for x in re.split(r"[^A-Z0-9]+", s) if x]
+    for token in parts:
+        if token in {"SCI", "SCIE", "ESCI", "SSCI", "AHCI", "EI"}:
+            out.add(token)
+        if "SSCI" in token:
+            out.add("SSCI")
+        if "SCIE" in token:
+            out.add("SCIE")
+        if "ESCI" in token:
+            out.add("ESCI")
+    if re.search(r"\bSCI\b", re.sub(r"[^A-Z]", " ", s)):
+        out.add("SCI")
+    if re.search(r"\bEI\b", re.sub(r"[^A-Z]", " ", s)):
+        out.add("EI")
+    return sorted(out)
+
+
+def load_cnki_scholar_data(store: JournalStore) -> Dict[str, object]:
+    meta: Dict[str, object] = {
+        "cnki_scholar_source_url": CNKI_SCHOLAR_JSON_URL,
+        "cnki_scholar_total_rows": 0,
+        "cnki_scholar_matched_rows": 0,
+        "cnki_scholar_updated_journals": 0,
+        "cnki_scholar_ambiguous_rows": 0,
+        "cnki_scholar_error": "",
+    }
+
+    payload = fetch_json_url(CNKI_SCHOLAR_JSON_URL, timeout=45)
+    if not isinstance(payload, list):
+        meta["cnki_scholar_error"] = "fetch_failed_or_invalid_payload"
+        return meta
+
+    meta["cnki_scholar_total_rows"] = len(payload)
+
+    title_map: Dict[str, List[int]] = {}
+    for j in store.items.values():
+        key = normalize_title(j.title)
+        if not key:
+            continue
+        title_map.setdefault(key, []).append(j.id)
+
+    updated_ids: set[int] = set()
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        key = normalize_title(title)
+        if not key:
+            continue
+
+        ids = title_map.get(key, [])
+        if len(ids) != 1:
+            if len(ids) > 1:
+                meta["cnki_scholar_ambiguous_rows"] = int(meta["cnki_scholar_ambiguous_rows"]) + 1
+            continue
+
+        j = store.items.get(ids[0])
+        if not j:
+            continue
+        meta["cnki_scholar_matched_rows"] = int(meta["cnki_scholar_matched_rows"]) + 1
+
+        changed = False
+        raw_tags = row.get("tags", [])
+        if isinstance(raw_tags, str):
+            raw_tags = [raw_tags]
+        tags = {normalize_tag_text(t) for t in raw_tags if str(t or "").strip()}
+
+        wos_raw = str(row.get("WOS") or "").strip()
+        wos_tokens = set(extract_wos_tokens(wos_raw))
+
+        if "北大核心" in tags and not j.pku_core:
+            j.pku_core = True
+            changed = True
+
+        cssci_candidate = ""
+        if "CSSCI(扩展)" in tags or "CSSCI扩展" in tags:
+            cssci_candidate = "扩展版"
+        elif "CSSCI" in tags:
+            cssci_candidate = "来源版"
+        cssci_merged = pick_cssci_type(j.cssci_type, cssci_candidate)
+        if cssci_merged != j.cssci_type:
+            j.cssci_type = cssci_merged
+            changed = True
+
+        cscd_candidate = ""
+        if "CSCD(核心)" in tags or "CSCD核心" in tags:
+            cscd_candidate = "核心库"
+        elif "CSCD(扩展)" in tags or "CSCD扩展" in tags:
+            cscd_candidate = "扩展库"
+        elif "CSCD" in tags:
+            cscd_candidate = "核心库"
+        cscd_merged = pick_cscd_type(j.cscd_type, cscd_candidate)
+        if cscd_merged != j.cscd_type:
+            j.cscd_type = cscd_merged
+            changed = True
+
+        if ("EI" in tags or "EI" in wos_tokens) and not j.ei_indexed:
+            j.ei_indexed = True
+            changed = True
+
+        for token in ("SCI", "SCIE", "ESCI", "SSCI", "EI"):
+            if token in tags and token not in j.tags:
+                j.tags.append(token)
+                changed = True
+            if token in wos_tokens and token not in j.tags:
+                j.tags.append(token)
+                changed = True
+
+        if changed:
+            updated_ids.add(j.id)
+
+        j.sources.append("cnki-scholar")
+        store.touch_index(j)
+
+    meta["cnki_scholar_updated_journals"] = len(updated_ids)
+    return meta
+
+
 def parse_html_table_rows(text: str) -> List[List[str]]:
     out: List[List[str]] = []
     for row_html in re.findall(r"<tr>(.*?)</tr>", text, flags=re.S):
@@ -1523,6 +1711,7 @@ def build() -> None:
     showjcr_meta = load_showjcr_data(store)
     load_cscd_md(store)
     hq_field_stats = load_hq_catalog(store)
+    cnki_meta = load_cnki_scholar_data(store)
 
     data = store.finalize()
     hq_catalog_journals = sum(1 for row in data if row.get("hq_catalog"))
@@ -1533,6 +1722,7 @@ def build() -> None:
             "root_data_dir": str(DATA_DIR),
             "cas_if_source": "showjcr_db" if showjcr_meta.get("showjcr_db_file") else "showjcr_csv",
             **showjcr_meta,
+            **cnki_meta,
             "total_journals": len(data),
             "hq_catalog_journals": hq_catalog_journals,
             "hq_field_count": len(hq_field_stats),

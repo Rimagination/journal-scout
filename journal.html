@@ -34,12 +34,20 @@
               <div class="v" id="spotPublisher">-</div>
             </div>
             <div class="kv">
+              <div class="k">收录类型</div>
+              <div class="v" id="spotIndexType">-</div>
+            </div>
+            <div class="kv">
               <div class="k">是否OA</div>
               <div class="v" id="spotOA">-</div>
             </div>
             <div class="kv">
               <div class="k">创刊参考年</div>
               <div class="v" id="spotPublishYear">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">年发文量（最新年） <button class="inline-info inline-info--warn" type="button" data-info="annual_articles" aria-label="查看年发文量说明">!</button></div>
+              <div class="v" id="spotAnnualArticles">-</div>
             </div>
           </div>
         </div>
@@ -93,8 +101,8 @@
         </div>
         <div class="history-card">
           <div class="history-card-head">
-            <h3>中科院分区变化</h3>
-            <button class="chart-zoom-btn" type="button" data-chart-zoom="casTrendChart" data-chart-title="中科院分区变化" data-tip="点击放大" aria-label="放大中科院分区变化图">
+            <h3>中科院分区变化（发布年份）</h3>
+            <button class="chart-zoom-btn" type="button" data-chart-zoom="casTrendChart" data-chart-title="中科院分区变化（发布年份）" data-tip="点击放大" aria-label="放大中科院分区变化图">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <circle cx="11" cy="11" r="6.5"></circle>
                 <line x1="16" y1="16" x2="21" y2="21"></line>
@@ -102,6 +110,18 @@
             </button>
           </div>
           <div id="casTrendChart" class="cas-trend-chart"></div>
+        </div>
+        <div class="history-card">
+          <div class="history-card-head">
+            <h3>年发文量变化</h3>
+            <button class="chart-zoom-btn" type="button" data-chart-zoom="annualTrendChart" data-chart-title="年发文量变化" data-tip="点击放大" aria-label="放大年发文量变化图">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <line x1="16" y1="16" x2="21" y2="21"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="annualTrendChart" class="annual-trend-chart"></div>
         </div>
       </div>
     </section>
@@ -140,6 +160,6 @@
     </div>
   </div>
 
-  <script src="./detail.js"></script>
+  <script src="./detail.js?v=20260226-2"></script>
 </body>
 </html>

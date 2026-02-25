@@ -1,4 +1,4 @@
-const SOURCE_INFO = {
+﻿const SOURCE_INFO = {
   core: {
     title: "核心指标说明",
     body: `
@@ -18,9 +18,10 @@ const SOURCE_INFO = {
   hq: {
     title: "科协高质量期刊分级说明",
     body: `
-      <p>科协分级反映期刊在对应学科目录中的位置，常见为 T1、T2 等标签。</p>
-      <p>同一期刊可能在不同学科目录中出现多条记录，页面会汇总展示。</p>
-      <p>科协分级与 JCR/中科院分区属于不同评价体系，建议结合使用。</p>
+      <p>为贯彻落实《关于深化改革 培育世界一流科技期刊的意见》，推动建设中外期刊同质等效的评价导向，引导更多高水平成果在国内期刊发表，中国科协自 2019 年起分批支持全国学会面向学科领域国内外科技期刊编制并发布高质量期刊分级目录，为科技工作者论文发表和科研机构学术评价提供参考。截至 2025 年 12 月 1 日，已完成 59 个学科领域的分级目录编制。</p>
+      <p>2025 年度《高质量科技期刊分级目录总汇（第五版）》新增药学领域分级目录，并由 20 家全国学会牵头对已发布的 20 个学科领域目录进行了优化调整，持续完善分级标准与目录结构。</p>
+      <p>参与优化调整的学会包括：中国自动化学会、中国地理学会、中国细胞生物学学会、中国汽车工程学会、中国生态学学会、中国材料研究学会、中国通信学会、中国仪器仪表学会、中国计算机学会、中国核学会、中国硅酸盐学会、中华预防医学会、中国环境科学学会、中国仿真学会、中国纺织工程学会、中国兵工学会、中国地球物理学会、中国航海学会、中国公路学会、中国优选法统筹法与经济数学研究会。</p>
+      <p>本页面中的“科协评级”展示对应期刊在相关学科目录中的分级结果（如 T1、T2）。同一期刊可能在多个学科目录中出现并对应多条记录，建议与 JCR、中科院分区及本单位政策结合使用。</p>
     `,
   },
   warning: {
@@ -37,6 +38,14 @@ const SOURCE_INFO = {
       <p>CiteScore 是 Scopus 期刊评价指标之一，本页同时展示 SJR、SNIP 与学科分区信息。</p>
       <p>学科表格包含大类/小类、分区、排名和百分位，便于横向比较期刊位置。</p>
       <p>当官方数据暂不可用时，页面会显示“参考值”提示，方便先做初筛。</p>
+    `,
+  },
+  annual_articles: {
+    title: "年发文量说明",
+    body: `
+      <p>“年发文量（最新年）”及右侧“年发文量变化”图主要来自 OpenAlex 的公开聚合数据（按期刊 Source 分组统计）。</p>
+      <p>该口径受数据收录范围、索引延迟、期刊更名/合并及回溯更新影响，可能与出版社官网、JCR 或 Scopus 的正式统计存在差异。</p>
+      <p>本页面数据用于选刊阶段的趋势参考，不建议作为单位考核或正式评价的唯一依据。</p>
     `,
   },
 };
@@ -61,10 +70,13 @@ const els = {
   citeScorePercentFill: document.getElementById("citeScorePercentFill"),
   citeScoreBreakdown: document.getElementById("citeScoreBreakdown"),
   spotPublisher: document.getElementById("spotPublisher"),
+  spotIndexType: document.getElementById("spotIndexType"),
   spotOA: document.getElementById("spotOA"),
   spotPublishYear: document.getElementById("spotPublishYear"),
+  spotAnnualArticles: document.getElementById("spotAnnualArticles"),
   ifTrendChart: document.getElementById("ifTrendChart"),
   casTrendChart: document.getElementById("casTrendChart"),
+  annualTrendChart: document.getElementById("annualTrendChart"),
   hqMetaGrid: document.getElementById("hqMetaGrid"),
   hqRecordList: document.getElementById("hqRecordList"),
   relatedList: document.getElementById("relatedList"),
@@ -79,6 +91,7 @@ const els = {
   chartModalClose: document.getElementById("chartModalClose"),
 };
 const homepagePreviewImageCache = new Map();
+const annualArticlesSeriesCache = new Map();
 
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
@@ -113,6 +126,12 @@ function yearNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function formatIFAcademicYear(rawYear) {
+  const y = yearNum(rawYear);
+  if (!y) return "";
+  return `${y}-${y + 1}年度`;
+}
+
 function casRankNumber(raw) {
   const m = String(raw || "").match(/([1-4])\s*区/);
   if (!m) return null;
@@ -120,7 +139,7 @@ function casRankNumber(raw) {
   return Number.isFinite(n) ? n : null;
 }
 
-function summarizeCASSubcategories(subcategories, limit = 3) {
+function formatCASSubcategoriesMultiline(subcategories) {
   const rows = Array.isArray(subcategories)
     ? subcategories
         .map((r) => ({
@@ -130,9 +149,54 @@ function summarizeCASSubcategories(subcategories, limit = 3) {
         .filter((r) => r.name || r.rank)
     : [];
   if (!rows.length) return "-";
-  const shown = rows.slice(0, limit).map((r) => (r.rank ? `${r.name}（${r.rank}）` : r.name));
-  if (rows.length > limit) shown.push(`等${rows.length}个`);
-  return shown.join("；");
+  return rows
+    .map((r) => {
+      if (r.name && r.rank) return `${r.name}（${r.rank}）`;
+      return r.name || r.rank;
+    })
+    .join("\n");
+}
+
+function collectIndexSignals(j, latestCas = null) {
+  const casRows = Array.isArray(j?.cas_history) ? j.cas_history : [];
+  const texts = [];
+  if (latestCas?.wos) texts.push(String(latestCas.wos));
+  for (const row of casRows) {
+    if (row?.wos) texts.push(String(row.wos));
+  }
+  const tags = Array.isArray(j?.tags) ? j.tags : [];
+  for (const t of tags) {
+    if (t !== null && t !== undefined) texts.push(String(t));
+  }
+
+  const merged = texts.join(" ").toUpperCase();
+  const tokenSet = new Set(
+    merged
+      .replace(/[^A-Z0-9]+/g, " ")
+      .split(/\s+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+  );
+
+  const hasSCIE = merged.includes("SCIE") || tokenSet.has("SCIE");
+  const hasESCI = merged.includes("ESCI") || tokenSet.has("ESCI");
+
+  return {
+    hasSCI: tokenSet.has("SCI") || hasSCIE,
+    hasSCIE,
+    hasESCI,
+    hasEI: tokenSet.has("EI"),
+    hasSSCI: merged.includes("SSCI") || tokenSet.has("SSCI"),
+  };
+}
+
+function buildInclusionTypeText(signals) {
+  const types = [];
+  if (signals?.hasSCI) types.push("SCI");
+  if (signals?.hasSCIE) types.push("SCIE");
+  if (signals?.hasESCI) types.push("ESCI");
+  if (signals?.hasEI) types.push("EI");
+  return types.length ? types.join(" / ") : "-";
 }
 
 function numberOrNull(v) {
@@ -188,18 +252,69 @@ function lastYearToken(text) {
 
 function buildPriorityTags(row) {
   const tags = [];
+  const rowTags = Array.isArray(row.tags) ? row.tags.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const pushTag = (text, cls) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    if (tags.some((x) => x.text === t)) return;
+    tags.push({ text: t, cls });
+  };
+
   if (row.jcr_quartile) {
-    tags.push({ text: `JCR ${row.jcr_quartile}`, cls: "tag--jcr" });
+    pushTag(`JCR ${row.jcr_quartile}`, "tag--jcr");
   }
   if (row.cas_2025) {
     const top = row.is_top === true ? " (Top)" : "";
-    tags.push({ text: `中科院${row.cas_2025}${top}`, cls: "tag--cas" });
+    pushTag(`中科院${row.cas_2025}${top}`, "tag--cas");
   }
   if (row.hq_level) {
-    tags.push({ text: `科协-${row.hq_level}`, cls: "tag--hq" });
+    pushTag(`科协-${row.hq_level}`, "tag--hq");
+  }
+  if (row.pku_core === true || rowTags.includes("北大核心")) {
+    pushTag("北大核心", "tag--pku");
+  }
+  let cssciType = String(row.cssci_type || "").trim();
+  if (!cssciType) {
+    if (rowTags.includes("CSSCI(扩展)") || rowTags.includes("CSSCI扩展")) cssciType = "扩展版";
+    else if (rowTags.includes("CSSCI")) cssciType = "来源版";
+  }
+  if (cssciType) {
+    pushTag(cssciType === "扩展版" ? "CSSCI(扩展)" : "CSSCI", "tag--cssci");
+  }
+  let cscdType = String(row.cscd_type || "").trim();
+  if (!cscdType) {
+    const cscdTag = rowTags.find((t) => t.startsWith("CSCD-"));
+    if (cscdTag) cscdType = cscdTag.slice(5);
+    else if (rowTags.includes("CSCD(核心)") || rowTags.includes("CSCD核心")) cscdType = "核心库";
+    else if (rowTags.includes("CSCD(扩展)") || rowTags.includes("CSCD扩展")) cscdType = "扩展库";
+    else if (rowTags.includes("CSCD")) cscdType = "核心库";
+  }
+  if (cscdType) {
+    pushTag(`CSCD-${cscdType}`, "tag--cscd");
+  }
+
+  const wosKnown = new Set(["SCI", "SCIE", "SSCI", "ESCI", "AHCI"]);
+  const wosOut = new Set();
+  for (const raw of rowTags) {
+    const upper = String(raw || "").toUpperCase();
+    const parts = upper.replace(/[^A-Z]+/g, " ").split(/\s+/).filter(Boolean);
+    for (const p of parts) {
+      if (wosKnown.has(p)) wosOut.add(p);
+    }
+    if (upper.includes("SCIE")) wosOut.add("SCIE");
+    if (upper.includes("SSCI")) wosOut.add("SSCI");
+    if (upper.includes("ESCI")) wosOut.add("ESCI");
+    if (upper.includes("AHCI")) wosOut.add("AHCI");
+    if (/\bSCI\b/.test(upper.replace(/[^A-Z]/g, " "))) wosOut.add("SCI");
+  }
+  for (const token of wosOut) {
+    pushTag(token, "tag--wos");
+  }
+  if (rowTags.some((t) => String(t).toUpperCase() === "EI")) {
+    pushTag("EI", "tag--ei");
   }
   if (row.warning_latest) {
-    tags.push({ text: "中科院预警", cls: "tag--warn" });
+    pushTag("中科院预警", "tag--warn");
   }
   return tags;
 }
@@ -295,8 +410,10 @@ function resetSpotlight(reason = "无数据") {
   els.journalSummary.textContent = "";
   setSpotlightWebsite("");
   els.spotPublisher.textContent = "-";
+  if (els.spotIndexType) els.spotIndexType.textContent = "-";
   els.spotOA.textContent = "-";
   els.spotPublishYear.textContent = "-";
+  if (els.spotAnnualArticles) els.spotAnnualArticles.textContent = "-";
   setCiteScoreCardState({
     score: null,
     isProxy: false,
@@ -771,6 +888,47 @@ async function fetchOpenAlexStartYear(source) {
   return y;
 }
 
+async function fetchOpenAlexAnnualArticlesSeries(source) {
+  const sourceId = parseOpenAlexSourceId(source?.id);
+  if (!sourceId) return [];
+  if (annualArticlesSeriesCache.has(sourceId)) {
+    return annualArticlesSeriesCache.get(sourceId) || [];
+  }
+
+  const url = `https://api.openalex.org/works?filter=primary_location.source.id:${encodeURIComponent(
+    sourceId
+  )}&group_by=publication_year&per-page=200`;
+  const payload = await fetchJsonWithTimeout(url, 7000);
+  const groups = Array.isArray(payload?.group_by) ? payload.group_by : [];
+  if (!groups.length) {
+    annualArticlesSeriesCache.set(sourceId, []);
+    return [];
+  }
+
+  const currentYear = new Date().getFullYear();
+  const rows = groups
+    .map((g) => {
+      const y = Number(g?.key);
+      const c = Number(g?.count);
+      if (!Number.isFinite(y) || !Number.isFinite(c)) return null;
+      if (y < 1600 || y > currentYear + 1 || c < 0) return null;
+      return { year: Math.trunc(y), count: Math.trunc(c) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.year - b.year);
+
+  annualArticlesSeriesCache.set(sourceId, rows);
+  return rows;
+}
+
+function pickLatestCompletedAnnualArticles(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const currentYear = new Date().getFullYear();
+  const sorted = [...rows].sort((a, b) => b.year - a.year);
+  const latestCompleted = sorted.find((r) => r.year < currentYear) || sorted[0];
+  return latestCompleted || null;
+}
+
 function asArray(v) {
   if (Array.isArray(v)) return v;
   if (v === null || v === undefined) return [];
@@ -1170,8 +1328,7 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
     }
 
     const introWithoutSource = await fetchJournalIntro(j, null, null);
-    els.journalSummary.textContent =
-      introWithoutSource || "暂无可用的公开期刊简介（已尝试 OpenAlex / Wikidata / Wikipedia）。";
+    els.journalSummary.textContent = introWithoutSource || "暂无可用的公开期刊简介。";
     setCiteScoreCardState({
       score: null,
       isProxy: false,
@@ -1180,6 +1337,7 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
       meta: "暂无 CiteScore 数据",
       source: "数据来源：暂不可用",
     });
+    renderAnnualArticlesTrend([]);
     return;
   }
 
@@ -1213,6 +1371,13 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
     els.spotPublishYear.textContent = String(startYear);
   }
 
+  const annualSeries = await fetchOpenAlexAnnualArticlesSeries(source);
+  const annual = pickLatestCompletedAnnualArticles(annualSeries);
+  if (annual && els.spotAnnualArticles) {
+    els.spotAnnualArticles.textContent = `${annual.year} 年 · ${annual.count.toLocaleString()} 篇`;
+  }
+  renderAnnualArticlesTrend(annualSeries);
+
   const citeScore = await fetchCiteScoreMetric(j, source);
   setCiteScoreCardState({
     score: citeScore.score,
@@ -1227,18 +1392,20 @@ async function enrichSpotlightFromOpenAlex(j, latestCas) {
   });
 
   const intro = await fetchJournalIntro(j, source, wikidataEntity);
-  els.journalSummary.textContent = intro || "暂无可用的公开期刊简介（已尝试 OpenAlex / Wikidata / Wikipedia）。";
+  els.journalSummary.textContent = intro || "暂无可用的公开期刊简介。";
 }
 
-function renderSpotlight(j, latestCas) {
+function renderSpotlight(j, latestCas, indexTypeText = "-") {
   const website = resolveWebsite(j);
   renderSpotlightCover(j, latestCas, website);
   setSpotlightWebsite(website, "访问期刊官网");
 
   els.journalSummary.textContent = "正在从公开知识库加载期刊简介…";
   els.spotPublisher.textContent = safe(j.publisher);
+  if (els.spotIndexType) els.spotIndexType.textContent = safe(indexTypeText);
   els.spotOA.textContent = safe(j.oa_status);
   els.spotPublishYear.textContent = "-";
+  if (els.spotAnnualArticles) els.spotAnnualArticles.textContent = "-";
   setCiteScoreCardState({
     score: null,
     isProxy: false,
@@ -1256,16 +1423,29 @@ function renderRow(j, meta) {
 
   const ifYear = safe(j.if_year || lastYearToken(meta.showjcr_jcr_year)).replace(/^-$/, "");
   const casYear = safe(j.cas_year || lastYearToken(meta.showjcr_fqb_year)).replace(/^-$/, "");
-  const ifLabel = ifYear ? `IF (${ifYear})` : "IF";
+  const ifAcademicYear = formatIFAcademicYear(ifYear);
+  const ifLabel = ifAcademicYear ? `IF (${ifAcademicYear})` : "IF";
   const jcrLabel = ifYear ? `JCR分区 (${ifYear})` : "JCR分区";
-  const casLabel = casYear ? `中科院分区 (${casYear})` : "中科院分区";
+  const casLabel = casYear ? `中科院分区（${casYear}）` : "中科院分区";
   const warningLabel = j.warning_latest_year ? `中科院预警 (${j.warning_latest_year})` : "中科院预警";
   const latestCas = [...(Array.isArray(j.cas_history) ? j.cas_history : [])].sort((a, b) => yearNum(b.year) - yearNum(a.year))[0];
   const casText = j.cas_2025 ? `${j.cas_2025}${j.is_top === true ? " (Top)" : ""}` : "-";
-  const casSubText = summarizeCASSubcategories(latestCas?.subcategories, 3);
-  renderSpotlight(j, latestCas);
+  const casSubText = formatCASSubcategoriesMultiline(latestCas?.subcategories);
+  const indexSignals = collectIndexSignals(j, latestCas);
+  const inclusionTypeText = buildInclusionTypeText(indexSignals);
+  const ssciText = indexSignals.hasSSCI ? "是" : "-";
+  const pkuCoreText = j.pku_core ? "是" : "-";
+  const cssciText = (() => {
+    if (j.cssci_type) return safe(j.cssci_type);
+    const tags = Array.isArray(j.tags) ? j.tags : [];
+    if (tags.includes("CSSCI(扩展)")) return "扩展版";
+    if (tags.includes("CSSCI")) return "来源版";
+    return "-";
+  })();
+
+  renderSpotlight(j, latestCas, inclusionTypeText);
   enrichSpotlightFromOpenAlex(j, latestCas).catch(() => {
-    els.journalSummary.textContent = "暂无可用的公开期刊简介（API 请求失败）。";
+    els.journalSummary.textContent = "暂无可用的公开期刊简介。";
     setCiteScoreCardState({
       score: null,
       isProxy: false,
@@ -1283,19 +1463,21 @@ function renderRow(j, meta) {
     { k: ifLabel, v: safe(j.if_2023), info: "showjcr" },
     { k: jcrLabel, v: safe(j.jcr_quartile), info: "showjcr" },
     { k: casLabel, v: casText, info: "showjcr" },
-    { k: `中科院大类${casYear ? ` (${casYear})` : ""}`, v: safe(latestCas?.category || ""), info: "showjcr" },
-    { k: "科协评级", v: safe(j.hq_level) },
-    { k: "OA状态", v: safe(j.oa_status) },
+    { k: `中科院大类${casYear ? `（${casYear}）` : ""}`, v: safe(latestCas?.category || ""), info: "showjcr", span: 2 },
+    { k: `中科院小类${casYear ? `（${casYear}）` : ""}`, v: safe(casSubText), info: "showjcr", span: 2, multiline: true },
+    { k: "SSCI", v: ssciText },
     { k: "CSCD", v: safe(j.cscd_type) },
+    { k: "北大核心", v: pkuCoreText },
+    { k: "CSSCI", v: cssciText },
     { k: warningLabel, v: safe(j.warning_latest), info: "warning", span: 2 },
-    { k: `中科院小类${casYear ? ` (${casYear})` : ""}`, v: safe(casSubText), info: "showjcr", span: 2 },
   ];
 
   els.coreGrid.innerHTML = kv
     .map((item) => {
       const label = escapeHtml(item.k);
       const cls = item.span === 2 ? "kv is-span-2" : "kv";
-      return `<div class="${cls}"><div class="k">${label}</div><div class="v">${escapeHtml(item.v)}</div></div>`;
+      const valueCls = item.multiline ? "v is-multiline" : "v";
+      return `<div class="${cls}"><div class="k">${label}</div><div class="${valueCls}">${escapeHtml(item.v)}</div></div>`;
     })
     .join("");
 }
@@ -1395,19 +1577,22 @@ function buildIFTrend(ifRows) {
     .join("");
 
   const xLabels = points
-    .map(
-      (p) =>
-        `<text x="${p.x.toFixed(2)}" y="${(height - 18).toFixed(2)}" text-anchor="middle" class="if-tick-label">${escapeHtml(
-          p.year
-        )}</text>`
-    )
+    .map((p, idx) => {
+      const isFirst = idx === 0;
+      const isLast = idx === points.length - 1;
+      const anchor = isFirst ? "start" : isLast ? "end" : "middle";
+      const x = p.x + (isFirst ? 4 : isLast ? -4 : 0);
+      return `<text x="${x.toFixed(2)}" y="${(height - 18).toFixed(2)}" text-anchor="${anchor}" class="if-tick-label">${escapeHtml(
+        formatIFAcademicYear(p.year) || p.year
+      )}</text>`;
+    })
     .join("");
 
   const pointDots = points
     .map(
       (p) =>
         `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="3.6" class="if-trend-dot"><title>${escapeHtml(
-          `${p.year} · IF ${p.value}`
+          `${formatIFAcademicYear(p.year) || p.year} · IF ${p.value}`
         )}</title></circle>`
     )
     .join("");
@@ -1425,7 +1610,6 @@ function buildIFTrend(ifRows) {
       ${xTicks}
       ${xLabels}
       ${yLabels}
-      <text x="${(width / 2).toFixed(2)}" y="${(height - 4).toFixed(2)}" text-anchor="middle" class="if-axis-title">年份</text>
       <text x="16" y="${(height / 2).toFixed(2)}" text-anchor="middle" class="if-axis-title" transform="rotate(-90 16 ${
         height / 2
       })">影响因子 (IF)</text>
@@ -1493,12 +1677,15 @@ function buildCASTrend(casRows) {
     .join("");
 
   const xLabels = points
-    .map(
-      (p) =>
-        `<text x="${p.x.toFixed(2)}" y="${(height - 18).toFixed(2)}" text-anchor="middle" class="cas-tick-label">${escapeHtml(
-          p.year
-        )}</text>`
-    )
+    .map((p, idx) => {
+      const isFirst = idx === 0;
+      const isLast = idx === points.length - 1;
+      const anchor = isFirst ? "start" : isLast ? "end" : "middle";
+      const x = p.x + (isFirst ? 4 : isLast ? -4 : 0);
+      return `<text x="${x.toFixed(2)}" y="${(height - 18).toFixed(2)}" text-anchor="${anchor}" class="cas-tick-label">${escapeHtml(
+        p.year
+      )}</text>`;
+    })
     .join("");
 
   const pointDots = points
@@ -1511,7 +1698,7 @@ function buildCASTrend(casRows) {
     .join("");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" class="cas-trend-svg" role="img" aria-label="中科院分区历年变化趋势图">
+    <svg viewBox="0 0 ${width} ${height}" class="cas-trend-svg" role="img" aria-label="中科院分区发布年份变化趋势图">
       ${yGrid}
       <line x1="${padLeft}" y1="${(height - padBottom).toFixed(2)}" x2="${(width - padRight).toFixed(
         2
@@ -1522,12 +1709,147 @@ function buildCASTrend(casRows) {
       ${xTicks}
       ${xLabels}
       ${yLabels}
-      <text x="${(width / 2).toFixed(2)}" y="${(height - 4).toFixed(2)}" text-anchor="middle" class="cas-axis-title">年份</text>
       <text x="16" y="${(height / 2).toFixed(2)}" text-anchor="middle" class="cas-axis-title" transform="rotate(-90 16 ${
         height / 2
       })">中科院分区</text>
     </svg>
   `;
+}
+
+function buildAnnualTrend(annualRows) {
+  const rows = annualRows
+    .map((r) => ({
+      year: String(r?.year || "").trim(),
+      value: numberOrNull(r?.count),
+    }))
+    .filter((r) => r.year && r.value !== null)
+    .sort((a, b) => yearNum(a.year) - yearNum(b.year));
+
+  if (!rows.length) {
+    return "<p class='placeholder'>暂无可绘制的年发文量数据</p>";
+  }
+
+  const series = rows.length > 10 ? rows.slice(-10) : rows;
+  const width = 640;
+  const height = 280;
+  const padLeft = 72;
+  const padRight = 18;
+  const padTop = 18;
+  const padBottom = 52;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+  const values = series.map((r) => Number(r.value));
+  const minData = Math.min(...values);
+  const maxData = Math.max(...values);
+
+  const rawRange = Math.max(maxData - minData, 1);
+  const rawStep = rawRange / 4;
+  const mag = 10 ** Math.floor(Math.log10(rawStep));
+  const norm = rawStep / mag;
+  const stepBase = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  const tickStep = Math.max(1, Math.round(stepBase * mag));
+
+  let minV = Math.floor(minData / tickStep) * tickStep;
+  let maxV = Math.ceil(maxData / tickStep) * tickStep;
+  if (minV === maxV) {
+    minV = Math.max(0, minV - tickStep);
+    maxV += tickStep;
+  }
+  if (minV > 0) {
+    minV = Math.max(0, minV - tickStep);
+  }
+
+  const xAt = (i) => {
+    if (series.length === 1) return padLeft + chartW / 2;
+    return padLeft + (i * chartW) / (series.length - 1);
+  };
+  const yAt = (v) => padTop + ((maxV - v) * chartH) / Math.max(maxV - minV, 1);
+
+  const points = series.map((r, i) => ({ x: xAt(i), y: yAt(Number(r.value)), year: r.year, value: Number(r.value) }));
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  const areaPath = [
+    `M${points[0].x.toFixed(2)} ${(height - padBottom).toFixed(2)}`,
+    ...points.map((p) => `L${p.x.toFixed(2)} ${p.y.toFixed(2)}`),
+    `L${points[points.length - 1].x.toFixed(2)} ${(height - padBottom).toFixed(2)}`,
+    "Z",
+  ].join(" ");
+
+  const yTicks = [];
+  for (let v = minV; v <= maxV + tickStep * 0.5; v += tickStep) {
+    yTicks.push(Math.round(v));
+  }
+
+  const yGrid = yTicks
+    .map((v) => {
+      const y = yAt(v);
+      return `<line x1="${padLeft}" y1="${y.toFixed(2)}" x2="${(width - padRight).toFixed(2)}" y2="${y.toFixed(
+        2
+      )}" class="annual-grid-line"></line>`;
+    })
+    .join("");
+
+  const yLabels = yTicks
+    .map((v) => {
+      const y = yAt(v);
+      return `<text x="${(padLeft - 10).toFixed(2)}" y="${(y + 4).toFixed(2)}" text-anchor="end" class="annual-tick-label">${escapeHtml(
+        Number(v).toLocaleString()
+      )}</text>`;
+    })
+    .join("");
+
+  const xTicks = points
+    .map((p) => {
+      const y0 = height - padBottom;
+      return `<line x1="${p.x.toFixed(2)}" y1="${y0.toFixed(2)}" x2="${p.x.toFixed(2)}" y2="${(y0 + 5).toFixed(
+        2
+      )}" class="annual-axis-tick"></line>`;
+    })
+    .join("");
+
+  const xLabels = points
+    .map((p, idx) => {
+      const isFirst = idx === 0;
+      const isLast = idx === points.length - 1;
+      const anchor = isFirst ? "start" : isLast ? "end" : "middle";
+      const x = p.x + (isFirst ? 4 : isLast ? -4 : 0);
+      return `<text x="${x.toFixed(2)}" y="${(height - 18).toFixed(2)}" text-anchor="${anchor}" class="annual-tick-label">${escapeHtml(
+        p.year
+      )}</text>`;
+    })
+    .join("");
+
+  const pointDots = points
+    .map(
+      (p) =>
+        `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="3.8" class="annual-trend-dot"><title>${escapeHtml(
+          `${p.year} · 发文量 ${Math.round(p.value).toLocaleString()} 篇`
+        )}</title></circle>`
+    )
+    .join("");
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="annual-trend-svg" role="img" aria-label="年发文量变化趋势图">
+      ${yGrid}
+      <line x1="${padLeft}" y1="${(height - padBottom).toFixed(2)}" x2="${(width - padRight).toFixed(
+        2
+      )}" y2="${(height - padBottom).toFixed(2)}" class="annual-axis-line"></line>
+      <line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${(height - padBottom).toFixed(2)}" class="annual-axis-line"></line>
+      <path d="${areaPath}" class="annual-trend-area"></path>
+      <path d="${linePath}" class="annual-trend-line"></path>
+      ${pointDots}
+      ${xTicks}
+      ${xLabels}
+      ${yLabels}
+      <text x="16" y="${(height / 2).toFixed(2)}" text-anchor="middle" class="annual-axis-title" transform="rotate(-90 16 ${
+        height / 2
+      })">年发文量（篇）</text>
+    </svg>
+  `;
+}
+
+function renderAnnualArticlesTrend(rows) {
+  if (!els.annualTrendChart) return;
+  els.annualTrendChart.innerHTML = buildAnnualTrend(Array.isArray(rows) ? rows : []);
 }
 
 function renderShowJCRHistory(j) {
@@ -1536,6 +1858,9 @@ function renderShowJCRHistory(j) {
 
   els.ifTrendChart.innerHTML = buildIFTrend(ifRows);
   els.casTrendChart.innerHTML = buildCASTrend(casRows);
+  if (els.annualTrendChart) {
+    els.annualTrendChart.innerHTML = "<p class='placeholder'>正在加载年发文量数据…</p>";
+  }
 }
 
 function renderHQ(j) {
@@ -1819,7 +2144,7 @@ async function bootstrap() {
   if (q) backUrl.searchParams.set("q", q);
   els.backLink.href = backUrl.toString();
 
-  const res = await fetch("./data/journals.json");
+  const res = await fetch("./data/journals.json", { cache: "no-store" });
   const payload = await res.json();
   const rows = payload.journals || [];
   const meta = payload.meta || {};
@@ -1834,6 +2159,7 @@ async function bootstrap() {
     resetSpotlight("无数据");
     els.ifTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
     els.casTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
+    if (els.annualTrendChart) els.annualTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
     els.hqMetaGrid.innerHTML = "";
     els.hqRecordList.innerHTML = "<p class='placeholder'>无数据</p>";
     els.relatedList.innerHTML = "<p class='placeholder'>无数据</p>";
@@ -1851,4 +2177,8 @@ bootstrap().catch((err) => {
   els.title.textContent = "加载失败";
   els.subtitle.textContent = "请刷新重试";
   resetSpotlight("加载失败");
+  if (els.ifTrendChart) els.ifTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
+  if (els.casTrendChart) els.casTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
+  if (els.annualTrendChart) els.annualTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
 });
+
