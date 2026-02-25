@@ -2144,7 +2144,7 @@ async function bootstrap() {
   if (q) backUrl.searchParams.set("q", q);
   els.backLink.href = backUrl.toString();
 
-  const res = await fetch("./data/journals.json", { cache: "no-store" });
+  const res = await fetch("./data/journals.json", { cache: "default" });
   const payload = await res.json();
   const rows = payload.journals || [];
   const meta = payload.meta || {};

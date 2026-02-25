@@ -7,6 +7,10 @@ const state = {
 };
 
 const DATA_PATHS = [
+  "./data/search_index.json",
+  "/data/search_index.json",
+  "./xuankan/demo_site/data/search_index.json",
+  "/xuankan/demo_site/data/search_index.json",
   "./data/journals.json",
   "/data/journals.json",
   "./xuankan/demo_site/data/journals.json",
@@ -533,7 +537,7 @@ function dataPathCandidates() {
 
 async function tryLoadPayload(path) {
   const res = await fetch(path, {
-    cache: "no-store",
+    cache: "default",
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {

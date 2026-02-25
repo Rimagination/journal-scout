@@ -15,9 +15,29 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 OUT_DIR = Path(__file__).resolve().parent / "data"
 OUT_FILE = OUT_DIR / "journals.json"
+SEARCH_INDEX_FILE = OUT_DIR / "search_index.json"
 HQ_STATS_FILE = OUT_DIR / "hq_field_stats.json"
 SHOWJCR_DATA_SUBDIR = "中科院分区表及JCR原始数据文件"
 CNKI_SCHOLAR_JSON_URL = "https://gitee.com/kailangge/cnki-journals/raw/main/cnki_journals.json"
+
+SEARCH_INDEX_FIELDS = [
+    "id",
+    "title",
+    "issn",
+    "eissn",
+    "cn_number",
+    "if_2023",
+    "if_year",
+    "jcr_quartile",
+    "cas_2025",
+    "is_top",
+    "hq_level",
+    "pku_core",
+    "cssci_type",
+    "cscd_type",
+    "warning_latest",
+    "tags",
+]
 
 
 ISSN_RE = re.compile(r"\b(\d{4})-?([\dXx]{4})\b")
@@ -1705,6 +1725,25 @@ def load_hq_catalog(store: JournalStore) -> List[Dict]:
     return field_stats
 
 
+def build_search_index(data: List[Dict], meta: Dict[str, object]) -> Dict[str, object]:
+    rows: List[Dict[str, object]] = []
+    for row in data:
+        item: Dict[str, object] = {k: row.get(k) for k in SEARCH_INDEX_FIELDS}
+        tags = item.get("tags")
+        item["tags"] = tags if isinstance(tags, list) else []
+        rows.append(item)
+
+    return {
+        "meta": {
+            "generated_at": meta.get("generated_at"),
+            "total_journals": len(rows),
+            "source_file": OUT_FILE.name,
+            "index_fields": SEARCH_INDEX_FIELDS,
+        },
+        "journals": rows,
+    }
+
+
 def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     store = JournalStore()
@@ -1731,9 +1770,15 @@ def build() -> None:
         },
         "journals": data,
     }
+    search_index_payload = build_search_index(data, payload["meta"])
     OUT_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    SEARCH_INDEX_FILE.write_text(
+        json.dumps(search_index_payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     HQ_STATS_FILE.write_text(json.dumps(hq_field_stats, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Generated {OUT_FILE} with {len(data)} journals.")
+    print(f"Generated {SEARCH_INDEX_FILE} with {len(search_index_payload['journals'])} journals.")
 
 
 if __name__ == "__main__":
