@@ -2148,33 +2148,31 @@ h1 {
 /* JournalScout home layout override */
 .search-page {
   font-family: "Lato", "LXGW WenKai", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background:
-    radial-gradient(52% 42% at 50% 22%, rgba(255, 255, 255, 0.96) 0%, rgba(250, 252, 255, 0.62) 55%, rgba(238, 243, 251, 0.8) 100%),
-    #eef3fb;
+  background: #f6f8fc;
 }
 
 .search-page .search-main {
-  max-width: 1120px;
+  max-width: 1240px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(36px, 7vw, 82px) 20px 22px;
+  padding: clamp(24px, 4vw, 48px) 20px 16px;
 }
 
 .search-page .search-shell {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid #dde6f2;
-  border-radius: 34px;
-  box-shadow:
-    0 28px 68px rgba(17, 31, 52, 0.14),
-    0 1px 0 rgba(255, 255, 255, 0.9) inset;
-  backdrop-filter: blur(10px);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .search-page .search-shell--single {
-  padding: clamp(30px, 6.2vw, 66px) clamp(20px, 6vw, 70px) clamp(24px, 4vw, 38px);
+  min-height: calc(100vh - 40px - 64px);
+  padding: 0 clamp(16px, 3vw, 34px) 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 
 .single-hero {
@@ -2182,55 +2180,55 @@ h1 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-bottom: 28px;
+  gap: 8px;
+  margin-bottom: 20px;
   text-align: center;
 }
 
 .single-logo {
-  width: clamp(136px, 18vw, 232px);
+  width: clamp(92px, 9.2vw, 148px);
   height: auto;
   object-fit: contain;
   user-select: none;
-  filter: drop-shadow(0 10px 20px rgba(34, 48, 69, 0.16));
+  filter: drop-shadow(0 8px 16px rgba(40, 56, 78, 0.12));
 }
 
 .single-title-en {
-  margin: 2px 0 0;
+  margin: 0;
   font-family: "Lato", "Times New Roman", serif;
-  font-size: clamp(44px, 7.2vw, 82px);
-  line-height: 1.03;
+  font-size: clamp(42px, 5.4vw, 72px);
+  line-height: 1.05;
   font-weight: 700;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.012em;
   color: #121722;
 }
 
 .single-title-zh {
-  margin: 0;
+  margin: 2px 0 0;
   font-family: "LXGW WenKai", "STKaiti", "Kaiti SC", serif;
-  font-size: clamp(34px, 5.6vw, 58px);
-  line-height: 1.08;
+  font-size: clamp(34px, 4.2vw, 56px);
+  line-height: 1.1;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: #101722;
 }
 
 .search-page .search-box--single {
-  width: min(100%, 980px);
+  width: min(100%, 860px);
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 56px;
+  grid-template-columns: 40px minmax(0, 1fr) 52px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid #d2ddec;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 8px 24px rgba(34, 50, 72, 0.08);
-  padding: 7px 9px 7px 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(30, 45, 66, 0.06);
+  padding: 6px 8px 6px 12px;
 }
 
 .search-box__icon {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   color: #8d9cb5;
   display: inline-flex;
   align-items: center;
@@ -2247,14 +2245,14 @@ h1 {
 }
 
 .search-page .search-box--single input {
-  height: 56px;
+  height: 46px;
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
   font-family: "Lato", "LXGW WenKai", "Noto Sans SC", sans-serif;
-  font-size: clamp(20px, 2.2vw, 30px);
-  font-weight: 500;
+  font-size: clamp(16px, 1.9vw, 24px);
+  font-weight: 400;
   color: #26324a;
 }
 
@@ -2264,17 +2262,17 @@ h1 {
 
 .search-page .search-box--single input::placeholder {
   color: #a0adc2;
-  font-size: clamp(17px, 1.7vw, 24px);
+  font-size: clamp(16px, 1.7vw, 22px);
 }
 
 .search-box__go {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 50%;
-  background: #ecf1f9;
+  background: #eef2f8;
   color: #49586f;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -2296,22 +2294,22 @@ h1 {
 }
 
 .search-page .search-tip {
-  margin: 14px 0 0;
-  font-size: 14px;
+  margin: 12px 0 0;
+  font-size: 13px;
   color: #65738d;
   text-align: center;
 }
 
 .search-page .active-filter {
-  margin-top: 12px;
+  margin-top: 10px;
   align-self: flex-start;
-  width: min(100%, 980px);
+  width: min(100%, 860px);
 }
 
 .search-page .suggestion-panel {
-  margin-top: 14px;
-  width: min(100%, 980px);
-  border-radius: 20px;
+  margin-top: 12px;
+  width: min(100%, 860px);
+  border-radius: 16px;
   border: 1px solid #d6e0ef;
 }
 
@@ -2322,34 +2320,33 @@ h1 {
 
 @media (max-width: 860px) {
   .search-page .search-main {
-    padding-top: 26px;
+    padding-top: 12px;
   }
 
   .single-hero {
-    gap: 8px;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
   }
 
   .single-title-en {
-    font-size: clamp(36px, 9.6vw, 56px);
+    font-size: clamp(34px, 8.4vw, 52px);
   }
 
   .single-title-zh {
-    font-size: clamp(28px, 7.6vw, 44px);
+    font-size: clamp(28px, 7.2vw, 42px);
   }
 
   .search-page .search-box--single {
     grid-template-columns: 36px minmax(0, 1fr) 48px;
-    padding: 6px 8px 6px 12px;
+    padding: 5px 8px 5px 11px;
   }
 
   .search-page .search-box--single input {
-    height: 48px;
-    font-size: clamp(17px, 3.4vw, 24px);
+    height: 42px;
+    font-size: clamp(16px, 3.2vw, 21px);
   }
 
   .search-page .search-box--single input::placeholder {
-    font-size: clamp(15px, 2.8vw, 20px);
+    font-size: clamp(15px, 2.8vw, 19px);
   }
 
   .search-box__go {
