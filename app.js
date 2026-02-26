@@ -37,6 +37,7 @@ const TAG_TEXT = {
 const els = {
   searchShell: document.querySelector(".search-shell"),
   searchInput: document.getElementById("searchInput"),
+  searchGoBtn: document.getElementById("searchGoBtn"),
   activeFilter: document.getElementById("activeFilter"),
   suggestionPanel: document.getElementById("suggestionPanel"),
   genInfo: document.getElementById("genInfo"),
@@ -258,6 +259,19 @@ function gotoDetail(id, q = "") {
   url.searchParams.set("id", String(id));
   if (q) url.searchParams.set("q", q);
   window.location.href = url.toString();
+}
+
+function gotoPickedSuggestion() {
+  if (!els.searchInput) return;
+  const q = els.searchInput.value.trim();
+  if (!q) return;
+
+  let picked = state.suggestions[state.activeIndex >= 0 ? state.activeIndex : 0];
+  if (!picked) {
+    const fallback = findSuggestions(q, 1);
+    picked = fallback[0];
+  }
+  if (picked) gotoDetail(picked.id, q);
 }
 
 function ensureActiveVisible() {
@@ -498,10 +512,15 @@ function bindEvents() {
 
     if (e.key === "Enter") {
       e.preventDefault();
-      const picked = state.suggestions[state.activeIndex >= 0 ? state.activeIndex : 0];
-      if (picked) gotoDetail(picked.id, els.searchInput.value.trim());
+      gotoPickedSuggestion();
     }
   });
+
+  if (els.searchGoBtn) {
+    els.searchGoBtn.addEventListener("click", () => {
+      gotoPickedSuggestion();
+    });
+  }
 
   document.addEventListener("click", (e) => {
     const target = e.target;

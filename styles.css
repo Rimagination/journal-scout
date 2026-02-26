@@ -2145,4 +2145,218 @@ h1 {
   }
 }
 
+/* JournalScout home layout override */
+.search-page {
+  font-family: "Lato", "LXGW WenKai", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background:
+    radial-gradient(52% 42% at 50% 22%, rgba(255, 255, 255, 0.96) 0%, rgba(250, 252, 255, 0.62) 55%, rgba(238, 243, 251, 0.8) 100%),
+    #eef3fb;
+}
+
+.search-page .search-main {
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(36px, 7vw, 82px) 20px 22px;
+}
+
+.search-page .search-shell {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid #dde6f2;
+  border-radius: 34px;
+  box-shadow:
+    0 28px 68px rgba(17, 31, 52, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  backdrop-filter: blur(10px);
+}
+
+.search-page .search-shell--single {
+  padding: clamp(30px, 6.2vw, 66px) clamp(20px, 6vw, 70px) clamp(24px, 4vw, 38px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.single-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.single-logo {
+  width: clamp(136px, 18vw, 232px);
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  filter: drop-shadow(0 10px 20px rgba(34, 48, 69, 0.16));
+}
+
+.single-title-en {
+  margin: 2px 0 0;
+  font-family: "Lato", "Times New Roman", serif;
+  font-size: clamp(44px, 7.2vw, 82px);
+  line-height: 1.03;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #121722;
+}
+
+.single-title-zh {
+  margin: 0;
+  font-family: "LXGW WenKai", "STKaiti", "Kaiti SC", serif;
+  font-size: clamp(34px, 5.6vw, 58px);
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #101722;
+}
+
+.search-page .search-box--single {
+  width: min(100%, 980px);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d2ddec;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 24px rgba(34, 50, 72, 0.08);
+  padding: 7px 9px 7px 14px;
+}
+
+.search-box__icon {
+  width: 30px;
+  height: 30px;
+  color: #8d9cb5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-box__icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  fill: none;
+  stroke-linecap: round;
+}
+
+.search-page .search-box--single input {
+  height: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: "Lato", "LXGW WenKai", "Noto Sans SC", sans-serif;
+  font-size: clamp(20px, 2.2vw, 30px);
+  font-weight: 500;
+  color: #26324a;
+}
+
+.search-page .search-box--single input:focus {
+  box-shadow: none;
+}
+
+.search-page .search-box--single input::placeholder {
+  color: #a0adc2;
+  font-size: clamp(17px, 1.7vw, 24px);
+}
+
+.search-box__go {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: #ecf1f9;
+  color: #49586f;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.search-box__go:hover {
+  background: #30598a;
+  color: #ffffff;
+  transform: translateX(1px);
+}
+
+.search-box__go:focus-visible {
+  outline: 3px solid rgba(76, 122, 175, 0.35);
+  outline-offset: 2px;
+}
+
+.search-page .search-tip {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: #65738d;
+  text-align: center;
+}
+
+.search-page .active-filter {
+  margin-top: 12px;
+  align-self: flex-start;
+  width: min(100%, 980px);
+}
+
+.search-page .suggestion-panel {
+  margin-top: 14px;
+  width: min(100%, 980px);
+  border-radius: 20px;
+  border: 1px solid #d6e0ef;
+}
+
+.search-page .foot {
+  max-width: 1120px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 860px) {
+  .search-page .search-main {
+    padding-top: 26px;
+  }
+
+  .single-hero {
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .single-title-en {
+    font-size: clamp(36px, 9.6vw, 56px);
+  }
+
+  .single-title-zh {
+    font-size: clamp(28px, 7.6vw, 44px);
+  }
+
+  .search-page .search-box--single {
+    grid-template-columns: 36px minmax(0, 1fr) 48px;
+    padding: 6px 8px 6px 12px;
+  }
+
+  .search-page .search-box--single input {
+    height: 48px;
+    font-size: clamp(17px, 3.4vw, 24px);
+  }
+
+  .search-page .search-box--single input::placeholder {
+    font-size: clamp(15px, 2.8vw, 20px);
+  }
+
+  .search-box__go {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
+}
+
 

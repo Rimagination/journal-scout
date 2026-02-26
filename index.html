@@ -4,8 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Journal Scout - 期刊查询</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont/style.css" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=20260226-4" />
 </head>
 <body class="search-page with-global-nav">
   <nav class="scansci-global-nav">
@@ -21,18 +25,26 @@
   </nav>
   <main class="search-main">
     <section class="search-shell search-shell--single">
-      <h1 class="single-title">期刊查询</h1>
-      <div class="search-head">
-        <span class="search-head__label">Journal Scout</span>
+      <div class="single-hero">
+        <img class="single-logo" src="./assets/journal-scout-logo.svg" alt="JournalScout logo" />
+        <h1 class="single-title-en">JournalScout</h1>
+        <h2 class="single-title-zh">期刊检索</h2>
       </div>
       <div class="search-box search-box--single">
+        <span class="search-box__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <circle cx="11" cy="11" r="6.8"></circle>
+            <line x1="16" y1="16" x2="21" y2="21"></line>
+          </svg>
+        </span>
         <input
           id="searchInput"
           autocomplete="off"
           placeholder="输入期刊名 / ISSN / CN号（如 Nature、0028-0836、11-2038/G3）"
         />
+        <button id="searchGoBtn" class="search-box__go" type="button" aria-label="进入详情">→</button>
       </div>
-      <p class="search-tip">输入后出现联想结果，回车可进入详情</p>
+      <p class="search-tip">输入后出现联想结果，回车或点击右侧箭头进入详情</p>
       <div id="activeFilter" class="active-filter" hidden></div>
       <div id="suggestionPanel" class="suggestion-panel" aria-live="polite"></div>
     </section>
@@ -55,6 +67,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=20260226-2"></script>
+  <script src="./app.js?v=20260226-4"></script>
 </body>
 </html>
