@@ -4,9 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Journal Scout - 期刊查询</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body class="search-page">
+<body class="search-page with-global-nav">
+  <nav class="scansci-global-nav">
+    <a class="scansci-global-nav__home" href="https://www.scansci.com">ScanSci 首页</a>
+    <details class="scansci-global-menu">
+      <summary>应用导航</summary>
+      <div class="scansci-global-menu__panel">
+        <a href="https://dataset.scansci.com">DataRaven</a>
+        <a href="https://journal.scansci.com">Journal Scout</a>
+        <a href="https://citation.scansci.com">Citation Integrity Lab</a>
+      </div>
+    </details>
+  </nav>
   <main class="search-main">
     <section class="search-shell search-shell--single">
       <h1 class="single-title">期刊查询</h1>

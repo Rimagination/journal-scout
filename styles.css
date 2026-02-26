@@ -32,6 +32,91 @@ body {
     var(--bg);
 }
 
+.with-global-nav {
+  padding-top: 40px;
+}
+
+.scansci-global-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  height: 40px;
+  border-bottom: 1px solid #d9e2ef;
+  background: rgba(248, 251, 255, 0.96);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.scansci-global-nav__home {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d425f;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.scansci-global-nav__home:hover {
+  color: #0f6178;
+}
+
+.scansci-global-menu {
+  position: relative;
+}
+
+.scansci-global-menu summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: #294862;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid #cbd8ea;
+  background: #f4f8ff;
+}
+
+.scansci-global-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.scansci-global-menu[open] summary {
+  border-color: #9ab8db;
+  background: #edf5ff;
+}
+
+.scansci-global-menu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 210px;
+  border: 1px solid #d0dcef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 22px rgba(28, 42, 64, 0.16);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.scansci-global-menu__panel a {
+  text-decoration: none;
+  color: #294862;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+
+.scansci-global-menu__panel a:hover {
+  background: #eef5ff;
+}
+
 button,
 input,
 select,
@@ -2042,6 +2127,22 @@ h1 {
 .chart-modal__body .annual-trend-svg {
   height: 420px;
 }
+}
+
+@media (max-width: 560px) {
+  .scansci-global-nav {
+    padding: 0 10px;
+  }
+
+  .scansci-global-nav__home {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .scansci-global-menu__panel {
+    min-width: 180px;
+  }
 }
 
 
