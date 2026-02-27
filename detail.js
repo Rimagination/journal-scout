@@ -98,6 +98,31 @@ const pageState = {
   openAlexSource: null,
 };
 
+const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
+  ? "http://127.0.0.1:8000/api"
+  : "https://www.scansci.com/api";
+
+const CHUNK_MANIFEST_PATHS = [
+  "./data/journal_chunks_manifest.json",
+  "/data/journal_chunks_manifest.json",
+  "./xuankan/demo_site/data/journal_chunks_manifest.json",
+  "/xuankan/demo_site/data/journal_chunks_manifest.json",
+];
+
+const SEARCH_INDEX_PATHS = [
+  "./data/search_index.json",
+  "/data/search_index.json",
+  "./xuankan/demo_site/data/search_index.json",
+  "/xuankan/demo_site/data/search_index.json",
+];
+
+const FULL_DATA_PATHS = [
+  "./data/journals.json",
+  "/data/journals.json",
+  "./xuankan/demo_site/data/journals.json",
+  "/xuankan/demo_site/data/journals.json",
+];
+
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
 }
@@ -429,40 +454,12 @@ function resetSpotlight(reason = "无数据") {
   });
 }
 
-function getElsevierApiKey() {
-  let fromStorage = "";
-  try {
-    fromStorage = String(localStorage.getItem("elsevier_api_key") || "");
-  } catch (_) {
-    fromStorage = "";
-  }
-  const fromWindow = String(window.ELSEVIER_API_KEY || "");
-  return (fromStorage || fromWindow).trim();
-}
-
-function setElsevierApiKey(rawKey) {
-  try {
-    const key = String(rawKey || "").trim();
-    if (key) {
-      localStorage.setItem("elsevier_api_key", key);
-    } else {
-      localStorage.removeItem("elsevier_api_key");
-    }
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-async function fetchElsevierViaLocalProxy(issn, apiKey) {
+async function fetchElsevierViaApi(issn) {
   const normalizedIssn = String(issn || "").trim();
   if (!normalizedIssn) return { ok: false, reason: "missing_issn", payload: null };
 
-  const url = `./api/elsevier/serial-title?issn=${encodeURIComponent(normalizedIssn)}`;
+  const url = `${API_BASE}/elsevier/serial-title?issn=${encodeURIComponent(normalizedIssn)}`;
   const headers = { Accept: "application/json" };
-  if (apiKey) {
-    headers["X-Proxy-Elsevier-Key"] = apiKey;
-  }
 
   try {
     const resp = await fetch(url, { method: "GET", headers });
@@ -474,12 +471,12 @@ async function fetchElsevierViaLocalProxy(issn, apiKey) {
     }
     if (!resp.ok) {
       const proxyError = String(payload?.error || "").trim();
-      const reason = proxyError ? `proxy_${proxyError}` : `proxy_http_${resp.status}`;
+      const reason = proxyError ? `api_${proxyError}` : `api_http_${resp.status}`;
       return { ok: false, reason, payload };
     }
     return { ok: true, reason: "", payload };
   } catch (_) {
-    return { ok: false, reason: "proxy_unreachable", payload: null };
+    return { ok: false, reason: "api_unreachable", payload: null };
   }
 }
 
@@ -490,7 +487,7 @@ async function fetchHomepagePreviewImage(url) {
     return homepagePreviewImageCache.get(normalizedUrl) || "";
   }
 
-  const endpoint = `./api/web/preview-image?url=${encodeURIComponent(normalizedUrl)}`;
+  const endpoint = `${API_BASE}/web/preview-image?url=${encodeURIComponent(normalizedUrl)}`;
   try {
     const resp = await fetch(endpoint, {
       method: "GET",
@@ -660,7 +657,6 @@ function renderCiteScoreBreakdown(subjects, isProxy = false) {
 
 function renderCiteScoreSourceLine({ sourceText = "", isProxy = false, reason = "" } = {}) {
   if (!els.citeScoreSource) return;
-  const hasKey = Boolean(getElsevierApiKey());
   const normalizedReason = String(reason || "").trim();
   const reasonText = normalizedReason ? mapElsevierFailureReason(normalizedReason) : "";
 
@@ -671,12 +667,7 @@ function renderCiteScoreSourceLine({ sourceText = "", isProxy = false, reason = 
 
   const actionButtons = [];
   if (isProxy) {
-    actionButtons.push(
-      `<button class="citescore-inline-btn" type="button" data-citescore-config="1">${hasKey ? "更新Key" : "配置Key"}</button>`
-    );
-    if (hasKey) {
-      actionButtons.push(`<button class="citescore-inline-btn" type="button" data-citescore-refresh="1">重试</button>`);
-    }
+    actionButtons.push(`<button class="citescore-inline-btn" type="button" data-citescore-refresh="1">重试</button>`);
   }
 
   const actionsHtml = actionButtons.length
@@ -1215,9 +1206,6 @@ function parseElsevierCiteScorePayload(payload) {
 }
 
 async function fetchElsevierCiteScore(j) {
-  const apiKey = getElsevierApiKey();
-  const hasDirectKey = Boolean(apiKey);
-
   const issns = [j.issn, j.eissn].filter(Boolean);
   if (!issns.length) {
     return {
@@ -1239,8 +1227,7 @@ async function fetchElsevierCiteScore(j) {
     const issn = String(rawIssn).trim();
     if (!issn) continue;
 
-    // Always try local proxy first. Proxy can use server-side env key.
-    const proxy = await fetchElsevierViaLocalProxy(issn, apiKey);
+    const proxy = await fetchElsevierViaApi(issn);
     if (proxy.ok && proxy.payload) {
       const parsed = parseElsevierCiteScorePayload(proxy.payload);
       if (parsed.score !== null || parsed.sjr !== null || parsed.snip !== null || (parsed.subjects || []).length) {
@@ -1252,45 +1239,9 @@ async function fetchElsevierCiteScore(j) {
           reason: "",
         };
       }
-      failReasons.push("proxy_no_metric");
+      failReasons.push("api_no_metric");
     } else {
-      failReasons.push(proxy.reason || "proxy_failed");
-    }
-
-    // Fallback direct call only when browser-side key is available.
-    if (!hasDirectKey) {
-      continue;
-    }
-
-    const url =
-      `https://api.elsevier.com/content/serial/title?` +
-      `issn=${encodeURIComponent(issn)}&view=STANDARD&field=citeScoreYearInfoList,SJR,SNIP,subject-area`;
-    try {
-      const resp = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "X-ELS-APIKey": apiKey,
-        },
-      });
-      if (!resp.ok) {
-        failReasons.push(`direct_http_${resp.status}`);
-        continue;
-      }
-      const payload = await resp.json();
-      const parsed = parseElsevierCiteScorePayload(payload);
-      if (parsed.score !== null || parsed.sjr !== null || parsed.snip !== null || (parsed.subjects || []).length) {
-        const statusText = parsed.status ? ` · ${parsed.status}` : "";
-        return {
-          ...parsed,
-          source: `数据来源：Scopus CiteScore${statusText}`,
-          isProxy: false,
-          reason: "",
-        };
-      }
-      failReasons.push("direct_no_metric");
-    } catch (_) {
-      failReasons.push("direct_fetch_failed");
+      failReasons.push(proxy.reason || "api_failed");
     }
   }
 
@@ -1314,17 +1265,15 @@ function mapElsevierFailureReason(reason) {
   if (!r) return "";
   if (r === "openalex_unavailable") return "无法识别期刊来源";
   if (r === "citescore_request_failed") return "请求失败";
-  if (r === "missing_api_key") return "未配置 Elsevier API Key";
-  if (r === "proxy_missing_api_key") return "本地代理未配置 ELSEVIER_API_KEY，且请求头未携带 Key";
   if (r === "missing_issn") return "缺少 ISSN";
-  if (r === "proxy_unreachable") return "本地代理未启动";
-  if (r.startsWith("proxy_http_401")) return "代理认证失败（API Key 无效）";
-  if (r.startsWith("proxy_http_403")) return "代理请求被拒绝（权限/机构网络）";
-  if (r.startsWith("proxy_http_429")) return "代理请求超限（Rate Limit）";
-  if (r.startsWith("proxy_elsevier_http_error")) return "Elsevier 接口返回错误（由本地代理转发）";
-  if (r.startsWith("direct_http_")) return `直连失败（HTTP ${r.replace("direct_http_", "")}）`;
-  if (r === "direct_fetch_failed") return "浏览器直连 Elsevier 失败（通常是 CORS）";
-  if (r === "proxy_no_metric" || r === "direct_no_metric") return "Elsevier 返回中缺少所需指标字段";
+  if (r === "api_missing_api_key") return "服务端尚未配置 Elsevier Key";
+  if (r === "api_elsevier_unreachable") return "Elsevier 服务暂不可达";
+  if (r === "api_unreachable") return "CiteScore 服务暂不可用";
+  if (r.startsWith("api_http_401")) return "CiteScore 服务认证失败";
+  if (r.startsWith("api_http_403")) return "CiteScore 服务请求被拒绝";
+  if (r.startsWith("api_http_429")) return "CiteScore 服务请求超限";
+  if (r.startsWith("api_elsevier_http_error")) return "Elsevier 接口返回错误";
+  if (r === "api_no_metric") return "Elsevier 返回中缺少所需指标字段";
   return `Elsevier 不可用（${r}）`;
 }
 
@@ -2211,24 +2160,6 @@ function closeChartModal() {
 
 function bindSourceModalEvents() {
   document.addEventListener("click", async (e) => {
-    const keyTrigger = e.target.closest("[data-citescore-config]");
-    if (keyTrigger) {
-      const current = getElsevierApiKey();
-      const input = window.prompt(
-        "请输入 Elsevier API Key（仅保存在当前浏览器；留空可清除）",
-        current
-      );
-      if (input !== null) {
-        const ok = setElsevierApiKey(input);
-        if (!ok) {
-          window.alert("当前浏览器不支持本地保存 API Key。");
-          return;
-        }
-        await refreshCiteScoreForCurrentJournal();
-      }
-      return;
-    }
-
     const retryTrigger = e.target.closest("[data-citescore-refresh]");
     if (retryTrigger) {
       await refreshCiteScoreForCurrentJournal();
@@ -2278,6 +2209,86 @@ function bindChartModalEvents() {
   });
 }
 
+async function tryFetchJson(path, cache = "default") {
+  const res = await fetch(path, { cache, headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status} @ ${path}`);
+  return res.json();
+}
+
+async function fetchJsonWithFallback(paths, cache = "default") {
+  let lastError = null;
+  for (const path of paths) {
+    try {
+      return await tryFetchJson(path, cache);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("json_fetch_failed");
+}
+
+function resolveDataPathCandidates(relativePath) {
+  const clean = String(relativePath || "").replace(/^\.?\/*/, "");
+  if (!clean) return [];
+  return [
+    `./data/${clean}`,
+    `/data/${clean}`,
+    `./xuankan/demo_site/data/${clean}`,
+    `/xuankan/demo_site/data/${clean}`,
+  ];
+}
+
+function toSafeBucket(id, chunkCount) {
+  const n = Number(id);
+  if (!Number.isFinite(n) || chunkCount <= 0) return 0;
+  return Math.abs(Math.trunc(n)) % chunkCount;
+}
+
+async function loadJournalFromChunks(id) {
+  const manifest = await fetchJsonWithFallback(CHUNK_MANIFEST_PATHS, "force-cache");
+  const meta = manifest?.meta || {};
+  const chunkCountRaw = Number(meta.chunk_count);
+  const chunkCount = Number.isFinite(chunkCountRaw) && chunkCountRaw > 0 ? chunkCountRaw : 64;
+  const bucket = toSafeBucket(id, chunkCount);
+
+  const chunkMeta = Array.isArray(manifest?.chunks)
+    ? manifest.chunks.find((x) => Number(x?.bucket) === bucket)
+    : null;
+  const defaultRel = `journal_chunks/chunk-${String(bucket).padStart(2, "0")}.json`;
+  const rel = String(chunkMeta?.file || defaultRel);
+
+  const chunkPayload = await fetchJsonWithFallback(resolveDataPathCandidates(rel), "force-cache");
+  const rows = Array.isArray(chunkPayload?.journals) ? chunkPayload.journals : [];
+  const row = rows.find((r) => Number(r?.id) === Number(id)) || null;
+  return { row, meta, rows };
+}
+
+async function loadJournalFromFullData(id) {
+  const payload = await fetchJsonWithFallback(FULL_DATA_PATHS, "default");
+  const rows = Array.isArray(payload?.journals) ? payload.journals : [];
+  const meta = payload?.meta || {};
+  const row = rows.find((r) => Number(r?.id) === Number(id)) || null;
+  return { row, meta, rows };
+}
+
+async function loadJournalById(id) {
+  try {
+    const chunkResult = await loadJournalFromChunks(id);
+    if (chunkResult.row) return chunkResult;
+  } catch (err) {
+    console.warn("Chunk loading failed, fallback to full data:", err);
+  }
+  return loadJournalFromFullData(id);
+}
+
+async function loadRelatedRows() {
+  const payload = await fetchJsonWithFallback(SEARCH_INDEX_PATHS, "force-cache");
+  return {
+    rows: Array.isArray(payload?.journals) ? payload.journals : [],
+    meta: payload?.meta || {},
+  };
+}
+
 async function bootstrap() {
   bindSourceModalEvents();
   bindChartModalEvents();
@@ -2287,13 +2298,13 @@ async function bootstrap() {
   if (q) backUrl.searchParams.set("q", q);
   els.backLink.href = backUrl.toString();
 
-  const res = await fetch("./data/journals.json", { cache: "default" });
-  const payload = await res.json();
-  const rows = payload.journals || [];
-  const meta = payload.meta || {};
+  const relatedPromise = loadRelatedRows().catch(() => ({ rows: [], meta: {} }));
+  const detailPayload = await loadJournalById(id);
+  const row = detailPayload.row;
+  const meta = detailPayload.meta || {};
+
   els.genInfo.textContent = `数据更新时间：${meta.generated_at || "-"}`;
 
-  const row = rows.find((r) => Number(r.id) === Number(id));
   if (!row) {
     els.title.textContent = "未找到期刊";
     els.subtitle.textContent = "请返回查询页重新检索";
@@ -2312,7 +2323,16 @@ async function bootstrap() {
   renderRow(row, meta);
   renderShowJCRHistory(row);
   renderHQ(row);
-  renderRelated(rows, row, q);
+  els.relatedList.innerHTML = "<p class='placeholder'>正在加载相近期刊...</p>";
+  relatedPromise.then((relatedPayload) => {
+    const relatedRows =
+      Array.isArray(relatedPayload.rows) && relatedPayload.rows.length
+        ? relatedPayload.rows
+        : Array.isArray(detailPayload.rows)
+        ? detailPayload.rows
+        : [];
+    renderRelated(relatedRows, row, q);
+  });
 }
 
 bootstrap().catch((err) => {

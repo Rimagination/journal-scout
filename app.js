@@ -4,6 +4,10 @@ const state = {
   activeIndex: -1,
   minIF: null,
   meta: null,
+  isDataReady: false,
+  isDataLoading: false,
+  loadError: null,
+  loadPromise: null,
 };
 
 const DATA_PATHS = [
@@ -11,10 +15,6 @@ const DATA_PATHS = [
   "/data/search_index.json",
   "./xuankan/demo_site/data/search_index.json",
   "/xuankan/demo_site/data/search_index.json",
-  "./data/journals.json",
-  "/data/journals.json",
-  "./xuankan/demo_site/data/journals.json",
-  "/xuankan/demo_site/data/journals.json",
 ];
 
 const DATA_PATH_CACHE_KEY = "journal_scout_data_path";
@@ -254,6 +254,23 @@ function openSuggestionPanel() {
   els.suggestionPanel.classList.add("is-open");
 }
 
+function setPanelMessage(message) {
+  if (!els.suggestionPanel) return;
+  openSuggestionPanel();
+  els.suggestionPanel.innerHTML = `<p class="placeholder">${escapeHtml(message)}</p>`;
+}
+
+function applyLoadedPayload(payload) {
+  state.rows = payload.journals;
+  state.meta = payload.meta || {};
+  state.isDataReady = true;
+  state.loadError = null;
+
+  if (els.genInfo) {
+    els.genInfo.textContent = `\u6570\u636e\u66f4\u65b0\u65f6\u95f4\uff1a${state.meta.generated_at || "-"}`;
+  }
+}
+
 function gotoDetail(id, q = "") {
   const url = new URL("./journal.html", window.location.href);
   url.searchParams.set("id", String(id));
@@ -261,10 +278,20 @@ function gotoDetail(id, q = "") {
   window.location.href = url.toString();
 }
 
-function gotoPickedSuggestion() {
+async function gotoPickedSuggestion() {
   if (!els.searchInput) return;
   const q = els.searchInput.value.trim();
   if (!q) return;
+
+  if (!state.isDataReady) {
+    setPanelMessage("\u6b63\u5728\u52a0\u8f7d\u671f\u520a\u7d22\u5f15...");
+    try {
+      await ensureDataReady();
+    } catch (err) {
+      showLoadError(err);
+      return;
+    }
+  }
 
   let picked = state.suggestions[state.activeIndex >= 0 ? state.activeIndex : 0];
   if (!picked) {
@@ -280,12 +307,22 @@ function ensureActiveVisible() {
   if (active) active.scrollIntoView({ block: "nearest" });
 }
 
-function renderSuggestions() {
+async function renderSuggestions() {
   if (!els.searchInput || !els.suggestionPanel) return;
   const q = els.searchInput.value.trim();
   if (!q) {
     closeSuggestionPanel();
     return;
+  }
+
+  if (!state.isDataReady) {
+    setPanelMessage("\u6b63\u5728\u52a0\u8f7d\u671f\u520a\u7d22\u5f15...");
+    try {
+      await ensureDataReady();
+    } catch (err) {
+      showLoadError(err);
+      return;
+    }
   }
 
   state.suggestions = findSuggestions(q);
@@ -328,7 +365,7 @@ function restoreQueryFromUrl() {
   const q = params.get("q");
   if (!q) return;
   els.searchInput.value = q;
-  renderSuggestions();
+  void renderSuggestions();
 }
 
 function openCommandPalette() {
@@ -346,7 +383,14 @@ function closeCommandPalette() {
 
 function runCommand(handler) {
   closeCommandPalette();
-  handler();
+  try {
+    const maybePromise = handler();
+    if (maybePromise && typeof maybePromise.then === "function") {
+      maybePromise.catch(showLoadError);
+    }
+  } catch (err) {
+    showLoadError(err);
+  }
 }
 
 function parseFilterCommand(input) {
@@ -383,14 +427,17 @@ function commandEntries() {
       run: () => {
         state.minIF = null;
         applyFilterHint();
-        renderSuggestions();
+        void renderSuggestions();
       },
     },
     {
       key: "sample-nature",
       title: "\u6253\u5f00\u793a\u4f8b\u671f\u520a Nature",
       desc: "\u5feb\u901f\u67e5\u770b Nature \u8be6\u60c5",
-      run: () => {
+      run: async () => {
+        if (!state.isDataReady) {
+          await ensureDataReady();
+        }
         const row = state.rows.find((r) => String(r.title || "").toUpperCase() === "NATURE");
         if (row) gotoDetail(row.id, "Nature");
       },
@@ -412,7 +459,7 @@ function renderCommandList(input) {
         run: () => {
           state.minIF = filterValue;
           applyFilterHint();
-          renderSuggestions();
+          void renderSuggestions();
         },
       },
     ];
@@ -489,12 +536,14 @@ function renderCommandList(input) {
 function bindEvents() {
   if (!els.searchInput || !els.suggestionPanel) return;
 
-  els.searchInput.addEventListener("input", renderSuggestions);
+  els.searchInput.addEventListener("input", () => {
+    void renderSuggestions();
+  });
   els.searchInput.addEventListener("focus", () => {
-    if (els.searchInput.value.trim()) renderSuggestions();
+    if (els.searchInput.value.trim()) void renderSuggestions();
   });
 
-  els.searchInput.addEventListener("keydown", (e) => {
+  els.searchInput.addEventListener("keydown", async (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       if (!state.suggestions.length) return;
       e.preventDefault();
@@ -512,13 +561,13 @@ function bindEvents() {
 
     if (e.key === "Enter") {
       e.preventDefault();
-      gotoPickedSuggestion();
+      await gotoPickedSuggestion();
     }
   });
 
   if (els.searchGoBtn) {
     els.searchGoBtn.addEventListener("click", () => {
-      gotoPickedSuggestion();
+      void gotoPickedSuggestion();
     });
   }
 
@@ -550,6 +599,10 @@ function bindEvents() {
 function dataPathCandidates() {
   const remembered = window.localStorage.getItem(DATA_PATH_CACHE_KEY);
   if (!remembered) return DATA_PATHS.slice();
+  if (!DATA_PATHS.includes(remembered)) {
+    window.localStorage.removeItem(DATA_PATH_CACHE_KEY);
+    return DATA_PATHS.slice();
+  }
   const all = [remembered, ...DATA_PATHS];
   return [...new Set(all)];
 }
@@ -583,22 +636,40 @@ async function loadPayloadWithFallback() {
   throw lastError || new Error("load_failed");
 }
 
+async function ensureDataReady() {
+  if (state.isDataReady) return;
+  if (state.loadError) throw state.loadError;
+  if (state.loadPromise) {
+    await state.loadPromise;
+    return;
+  }
+
+  state.isDataLoading = true;
+  state.loadPromise = (async () => {
+    const payload = await loadPayloadWithFallback();
+    applyLoadedPayload(payload);
+  })();
+
+  try {
+    await state.loadPromise;
+  } catch (err) {
+    state.loadError = err;
+    throw err;
+  } finally {
+    state.isDataLoading = false;
+    state.loadPromise = null;
+  }
+}
+
 function showLoadError(err) {
   console.error("Journal data load failed:", err);
-  openSuggestionPanel();
-  if (!els.suggestionPanel) return;
-  els.suggestionPanel.innerHTML =
-    "<p class='placeholder'>\u6570\u636e\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5237\u65b0\u91cd\u8bd5</p>";
+  setPanelMessage("\u6570\u636e\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5237\u65b0\u91cd\u8bd5");
 }
 
 async function bootstrap() {
   if (!els.searchInput || !els.suggestionPanel) return;
-  const payload = await loadPayloadWithFallback();
-  state.rows = payload.journals;
-  state.meta = payload.meta || {};
-
   if (els.genInfo) {
-    els.genInfo.textContent = `\u6570\u636e\u66f4\u65b0\u65f6\u95f4\uff1a${state.meta.generated_at || "-"}`;
+    els.genInfo.textContent = "\u8f93\u5165\u5173\u952e\u8bcd\u540e\u52a0\u8f7d\u7d22\u5f15";
   }
 
   applyFilterHint();

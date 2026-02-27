@@ -17,6 +17,9 @@ OUT_DIR = Path(__file__).resolve().parent / "data"
 OUT_FILE = OUT_DIR / "journals.json"
 SEARCH_INDEX_FILE = OUT_DIR / "search_index.json"
 HQ_STATS_FILE = OUT_DIR / "hq_field_stats.json"
+CHUNK_DIR = OUT_DIR / "journal_chunks"
+CHUNK_MANIFEST_FILE = OUT_DIR / "journal_chunks_manifest.json"
+CHUNK_COUNT = 64
 SHOWJCR_DATA_SUBDIR = "中科院分区表及JCR原始数据文件"
 CNKI_SCHOLAR_JSON_URL = "https://gitee.com/kailangge/cnki-journals/raw/main/cnki_journals.json"
 
@@ -1744,6 +1747,53 @@ def build_search_index(data: List[Dict], meta: Dict[str, object]) -> Dict[str, o
     }
 
 
+def build_journal_chunks(data: List[Dict], meta: Dict[str, object]) -> Dict[str, object]:
+    CHUNK_DIR.mkdir(parents=True, exist_ok=True)
+    for old in CHUNK_DIR.glob("chunk-*.json"):
+        old.unlink(missing_ok=True)
+
+    buckets: List[List[Dict[str, object]]] = [[] for _ in range(CHUNK_COUNT)]
+    for row in data:
+        raw_id = row.get("id")
+        idx = None
+        try:
+            rid = int(raw_id)
+            if rid >= 0:
+                idx = rid % CHUNK_COUNT
+        except (TypeError, ValueError):
+            idx = None
+        if idx is None:
+            fallback_key = normalize_title(str(row.get("title") or ""))
+            idx = (sum(ord(ch) for ch in fallback_key) or 0) % CHUNK_COUNT
+        buckets[idx].append(row)
+
+    chunks_meta: List[Dict[str, object]] = []
+    for i, rows in enumerate(buckets):
+        rel = f"journal_chunks/chunk-{i:02d}.json"
+        (OUT_DIR / rel).write_text(
+            json.dumps({"journals": rows}, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        chunks_meta.append(
+            {
+                "bucket": i,
+                "file": rel,
+                "count": len(rows),
+            }
+        )
+
+    return {
+        "meta": {
+            "generated_at": meta.get("generated_at"),
+            "total_journals": len(data),
+            "chunk_count": CHUNK_COUNT,
+            "strategy": "id_mod",
+            "source_file": OUT_FILE.name,
+        },
+        "chunks": chunks_meta,
+    }
+
+
 def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     store = JournalStore()
@@ -1771,14 +1821,20 @@ def build() -> None:
         "journals": data,
     }
     search_index_payload = build_search_index(data, payload["meta"])
+    chunk_manifest_payload = build_journal_chunks(data, payload["meta"])
     OUT_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     SEARCH_INDEX_FILE.write_text(
         json.dumps(search_index_payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    CHUNK_MANIFEST_FILE.write_text(
+        json.dumps(chunk_manifest_payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     HQ_STATS_FILE.write_text(json.dumps(hq_field_stats, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Generated {OUT_FILE} with {len(data)} journals.")
     print(f"Generated {SEARCH_INDEX_FILE} with {len(search_index_payload['journals'])} journals.")
+    print(f"Generated {CHUNK_MANIFEST_FILE} with {CHUNK_COUNT} chunks.")
 
 
 if __name__ == "__main__":
