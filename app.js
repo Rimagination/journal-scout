@@ -61,7 +61,66 @@ function escapeHtml(text) {
 }
 
 function getHaystack(row) {
-  return [row.title, row.issn, row.eissn, row.cn_number].join(" ").toLowerCase();
+  if (typeof row.__haystack === "string") return row.__haystack;
+  const haystack = [row.title, row.issn, row.eissn, row.cn_number].join(" ").toLowerCase();
+  row.__haystack = haystack;
+  return haystack;
+}
+
+const ABBR_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "by",
+  "for",
+  "from",
+  "in",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "with",
+]);
+
+function normalizeAbbrQuery(query) {
+  return String(query || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function isAbbrQuery(query) {
+  return /^[a-z0-9]{2,10}$/.test(query);
+}
+
+function buildTitleAbbrVariants(title) {
+  const words = String(title || "")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+  if (!words.length) return [];
+
+  const variants = new Set();
+  const allInitials = words.map((w) => w[0]).join("").toLowerCase();
+  if (allInitials.length >= 2) variants.add(allInitials);
+
+  const coreWords = words.filter((w) => !ABBR_STOPWORDS.has(w.toLowerCase()));
+  const coreInitials = coreWords.map((w) => w[0]).join("").toLowerCase();
+  if (coreInitials.length >= 2) variants.add(coreInitials);
+
+  if (coreWords.length >= 2) {
+    variants.add((coreWords[0][0] + coreWords[1][0]).toLowerCase());
+  }
+
+  return [...variants];
+}
+
+function getAbbrVariants(row) {
+  if (Array.isArray(row.__abbrVariants)) return row.__abbrVariants;
+  const variants = buildTitleAbbrVariants(row.title);
+  row.__abbrVariants = variants;
+  return variants;
 }
 
 function yearNum(v) {
@@ -77,18 +136,24 @@ function formatIFAcademicYear(rawYear) {
 
 function scoreRow(row, query) {
   const q = query.toLowerCase();
+  const qAbbr = normalizeAbbrQuery(query);
   const title = String(row.title || "").toLowerCase();
   const issn = String(row.issn || "").toLowerCase();
   const eissn = String(row.eissn || "").toLowerCase();
   const cn = String(row.cn_number || "").toLowerCase();
+  const abbrVariants = isAbbrQuery(qAbbr) ? getAbbrVariants(row) : [];
+  const abbrExact = abbrVariants.some((abbr) => abbr === qAbbr);
+  const abbrPrefix = abbrVariants.some((abbr) => abbr.startsWith(qAbbr));
 
   let score = 0;
   if (title === q) score += 1000;
   if (issn === q || eissn === q || cn === q) score += 950;
   if (title.startsWith(q)) score += 450;
   if (issn.startsWith(q) || eissn.startsWith(q) || cn.startsWith(q)) score += 330;
-  if (title.includes(q)) score += 180;
-  if (getHaystack(row).includes(q)) score += 70;
+  if (abbrExact) score += 280;
+  else if (abbrPrefix) score += 220;
+  if (q.length >= 3 && title.includes(q)) score += 180;
+  if (q.length >= 3 && getHaystack(row).includes(q)) score += 70;
   if (row.if_2023 !== null && row.if_2023 !== undefined) score += Math.min(80, Number(row.if_2023) / 8);
   if (row.jcr_quartile === "Q1") score += 40;
   if (String(row.cas_2025 || "").trim() === `1\u533a`) score += 30;
@@ -204,9 +269,27 @@ function renderTagList(tags) {
 function findSuggestions(query, limit = 12) {
   const q = query.trim();
   if (!q) return [];
+  const qLower = q.toLowerCase();
+  const qAbbr = normalizeAbbrQuery(q);
+  const useAbbrMatch = isAbbrQuery(qAbbr);
+  const shortAbbrMode = useAbbrMatch && qAbbr.length <= 4;
 
   return state.rows
-    .filter((row) => getHaystack(row).includes(q.toLowerCase()))
+    .filter((row) => {
+      if (shortAbbrMode) {
+        const title = String(row.title || "").toLowerCase();
+        const issn = String(row.issn || "").toLowerCase();
+        const eissn = String(row.eissn || "").toLowerCase();
+        const cn = String(row.cn_number || "").toLowerCase();
+        if (title.startsWith(qLower) || issn.startsWith(qLower) || eissn.startsWith(qLower) || cn.startsWith(qLower)) {
+          return true;
+        }
+        return getAbbrVariants(row).some((abbr) => abbr.startsWith(qAbbr));
+      }
+      if (getHaystack(row).includes(qLower)) return true;
+      if (!useAbbrMatch) return false;
+      return getAbbrVariants(row).some((abbr) => abbr.startsWith(qAbbr));
+    })
     .filter((row) => {
       if (state.minIF === null) return true;
       const v = Number(row.if_2023);
