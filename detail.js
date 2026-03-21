@@ -106,7 +106,7 @@ const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? "http://127.0.0.1:8000/api"
   : "https://www.scansci.com/api";
 const ELSEVIER_API_TIMEOUT_MS = 2200;
-const DETAIL_PAGE_REV = "20260321-submission-v5";
+const DETAIL_PAGE_REV = "20260321-submission-v6";
 
 const CHUNK_MANIFEST_PATHS = [
   "./data/journal_chunks_manifest.json",
@@ -2068,19 +2068,19 @@ function buildSubmissionHero(data, viewerAuthenticated) {
     buildSubmissionOverviewCard(
       "公开指标",
       officialCount ? `${officialCount} 条` : "待补充",
-      "优先看期刊官网或出版社明确披露的审稿时间、首轮决定和录用率。",
+      "官网或出版社可核验的数据。",
       "official"
     ),
     buildSubmissionOverviewCard(
       "投稿经验",
       communityCount ? `${communityCount} 条` : "待补充",
-      "来自公开经验站点，只保留已对齐 ISSN 的记录，用来辅助判断节奏。",
+      "公开经验样本，用来辅助判断节奏。",
       "community"
     ),
     buildSubmissionOverviewCard(
       "用户评分",
       totalRatings ? `${totalRatings} 人` : viewerAuthenticated ? "等你评分" : "登录可评",
-      "站内只收结构化评分，不和公开数据混成一个总分。",
+      "站内结构化评分，不和公开数据混算。",
       "rating"
     ),
   ];
@@ -2088,9 +2088,9 @@ function buildSubmissionHero(data, viewerAuthenticated) {
   return `
     <section class="submission-hero">
       <div class="submission-hero__copy">
-        <div class="submission-hero__eyebrow">投稿参考怎么读</div>
-        <h3>先看公开披露，再看投稿经验，最后参考站内评分</h3>
-        <p>这三类信息分开展示。可核验的数据和主观体验不混算，避免把不同性质的信息揉成一个误导性的“总分”。</p>
+        <div class="submission-hero__eyebrow">投稿参考</div>
+        <h3>公开指标、投稿经验和用户评分分开展示</h3>
+        <p>先看官网披露，再用经验样本补充，不把不同来源揉成一个总分。</p>
       </div>
       <div class="submission-overview">
         ${cards.join("")}
@@ -2277,7 +2277,7 @@ function buildUserRatingSection(summary, viewerAuthenticated, issn, myRating) {
         <div class="submission-section__titlewrap">
           <div class="submission-section__eyebrow">ScanSci</div>
           <h3>用户评分</h3>
-          <p class="submission-section__desc">站内只收结构化评分，用来补充审稿速度、编辑体验和总体推荐这类主观感受。</p>
+          <p class="submission-section__desc">只收结构化评分，用来补充公开指标之外的主观体验。</p>
         </div>
         <span class="submission-section__meta">${escapeHtml(viewerAuthenticated ? "已登录" : "未登录")}</span>
       </div>
@@ -2308,7 +2308,7 @@ function renderSubmissionStats(payload, j) {
   const officialHtml = buildSubmissionSourceBlock({
     eyebrow: "期刊 / 出版社",
     title: "公开指标",
-    description: "来自期刊官网或出版社公开页面，只展示能明确核验的字段。",
+    description: "只保留期刊官网或出版社能明确核验的字段。",
     items: data.official_sources,
     kind: "official",
     emptyTitle: "暂未收录公开指标",
@@ -2317,7 +2317,7 @@ function renderSubmissionStats(payload, j) {
   const communityHtml = buildSubmissionSourceBlock({
     eyebrow: "公开经验站点",
     title: "投稿经验",
-    description: "来自公开经验站点，仅保留已对齐 ISSN 的记录，适合作为节奏参考。",
+    description: "来自公开经验站点，仅作节奏参考。",
     items: data.community_sources,
     kind: "community",
     emptyTitle: "暂未收录投稿经验",
@@ -2329,13 +2329,9 @@ function renderSubmissionStats(payload, j) {
     ${noticeHtml}
     ${heroHtml}
     <div class="submission-layout">
-      <div class="submission-stack">
-        ${officialHtml}
-        ${communityHtml}
-      </div>
-      <div class="submission-stack">
-        ${ratingHtml}
-      </div>
+      ${officialHtml}
+      ${communityHtml}
+      ${ratingHtml}
     </div>
   `;
 }

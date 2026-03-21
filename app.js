@@ -47,7 +47,7 @@ const els = {
   cmdList: document.getElementById("cmdList"),
 };
 
-const DETAIL_PAGE_REV = "20260321-submission-v5";
+const DETAIL_PAGE_REV = "20260321-submission-v6";
 
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
