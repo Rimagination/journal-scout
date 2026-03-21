@@ -506,7 +506,8 @@ h1 {
   grid-template-areas:
     "core spotlight trend"
     "hq spotlight trend"
-    "hq related trend";
+    "hq submission trend"
+    "related related trend";
 }
 
 .detail-page .panel {
@@ -537,6 +538,11 @@ h1 {
 
 .detail-page .panel--related {
   grid-area: related;
+  align-self: start;
+}
+
+.detail-page .panel--submission {
+  grid-area: submission;
   align-self: start;
 }
 
@@ -2027,6 +2033,289 @@ h1 {
   cursor: pointer;
 }
 
+.submission-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.submission-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #ebe4d6;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(250, 248, 242, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.submission-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.submission-section__head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #2a374b;
+}
+
+.submission-section__meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7687;
+}
+
+.submission-source-list {
+  display: grid;
+  gap: 10px;
+}
+
+.submission-source-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #ddd7c7;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fffdfa;
+}
+
+.submission-source-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.submission-source-card__title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #243247;
+}
+
+.submission-source-card__meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #687487;
+}
+
+.submission-source-card__link {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #d4cfbf;
+  background: #f7f2e6;
+  color: #7a5226;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.submission-source-card__link:hover {
+  background: #edd9b6;
+  border-color: #c9a46a;
+}
+
+.submission-source-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.submission-metric {
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid #ece6d9;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.submission-metric__label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7a8596;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.submission-metric__value {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #243247;
+}
+
+.submission-rating-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.submission-rating-summary__item {
+  border-radius: 12px;
+  border: 1px solid #dfd8ca;
+  background: #fffdfa;
+  padding: 12px;
+}
+
+.submission-rating-summary__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7686;
+}
+
+.submission-rating-summary__value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #243247;
+}
+
+.submission-rating-summary__count {
+  font-size: 12px;
+  color: #7c8797;
+}
+
+.submission-rating-form {
+  display: grid;
+  gap: 12px;
+}
+
+.submission-rating-form__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.submission-field {
+  display: grid;
+  gap: 6px;
+}
+
+.submission-field label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #314158;
+}
+
+.submission-field select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d3dbca;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: #273347;
+}
+
+.submission-field select:focus {
+  outline: none;
+  border-color: #6d9d82;
+  box-shadow: 0 0 0 4px rgba(95, 142, 112, 0.16);
+}
+
+.submission-rating-form__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.submission-rating-form__hint {
+  font-size: 12px;
+  color: #6d788a;
+}
+
+.submission-submit-btn,
+.submission-login-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 0;
+  background: linear-gradient(135deg, #315f8d 0%, #274769 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.submission-submit-btn:hover,
+.submission-login-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(39, 71, 105, 0.2);
+}
+
+.submission-submit-btn[disabled] {
+  opacity: 0.68;
+  cursor: wait;
+  box-shadow: none;
+  transform: none;
+}
+
+.submission-auth-cta {
+  display: grid;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px dashed #d7cdb7;
+  background: #fffcf5;
+  padding: 14px;
+}
+
+.submission-auth-cta p {
+  margin: 0;
+  font-size: 13px;
+  color: #4f5b6f;
+}
+
+.submission-auth-cta__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.submission-secondary-link {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f678f;
+  text-decoration: none;
+}
+
+.submission-secondary-link:hover {
+  text-decoration: underline;
+}
+
+.submission-flash {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.submission-flash--success {
+  border: 1px solid #bfdcbc;
+  background: #eef8eb;
+  color: #2a6a39;
+}
+
+.submission-flash--error {
+  border: 1px solid #efc7c0;
+  background: #fff1ee;
+  color: #a13d31;
+}
+
 @media (max-width: 1120px) {
   .detail-page .detail-main {
     width: calc(100vw - 24px);
@@ -2034,6 +2323,7 @@ h1 {
     grid-template-areas:
       "core spotlight"
       "hq spotlight"
+      "submission submission"
       "trend trend"
       "related related";
   }
@@ -2079,10 +2369,23 @@ h1 {
     grid-template-columns: 1fr;
     grid-template-areas:
       "spotlight"
+      "submission"
       "trend"
       "core"
       "hq"
       "related";
+  }
+
+  .submission-source-card__head,
+  .submission-rating-form__foot,
+  .submission-auth-cta__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .submission-rating-summary,
+  .submission-rating-form__grid {
+    grid-template-columns: 1fr;
   }
 
   .detail-page .spotlight-layout {

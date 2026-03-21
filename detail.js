@@ -79,6 +79,7 @@ const els = {
   annualTrendChart: document.getElementById("annualTrendChart"),
   hqMetaGrid: document.getElementById("hqMetaGrid"),
   hqRecordList: document.getElementById("hqRecordList"),
+  submissionPanel: document.getElementById("submissionPanel"),
   relatedList: document.getElementById("relatedList"),
   genInfo: document.getElementById("genInfo"),
   sourceModal: document.getElementById("sourceModal"),
@@ -96,11 +97,15 @@ const pageState = {
   journal: null,
   latestCas: null,
   openAlexSource: null,
+  submissionStats: null,
+  submissionNotice: null,
+  submissionLoading: false,
 };
 
 const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? "http://127.0.0.1:8000/api"
   : "https://www.scansci.com/api";
+const ELSEVIER_API_TIMEOUT_MS = 2200;
 
 const CHUNK_MANIFEST_PATHS = [
   "./data/journal_chunks_manifest.json",
@@ -460,9 +465,11 @@ async function fetchElsevierViaApi(issn) {
 
   const url = `${API_BASE}/elsevier/serial-title?issn=${encodeURIComponent(normalizedIssn)}`;
   const headers = { Accept: "application/json" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ELSEVIER_API_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, { method: "GET", headers });
+    const resp = await fetch(url, { method: "GET", headers, signal: controller.signal });
     let payload = null;
     try {
       payload = await resp.json();
@@ -477,6 +484,8 @@ async function fetchElsevierViaApi(issn) {
     return { ok: true, reason: "", payload };
   } catch (_) {
     return { ok: false, reason: "api_unreachable", payload: null };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1206,7 +1215,7 @@ function parseElsevierCiteScorePayload(payload) {
 }
 
 async function fetchElsevierCiteScore(j) {
-  const issns = [j.issn, j.eissn].filter(Boolean);
+  const issns = [...new Set([j.issn, j.eissn].filter(Boolean).map((x) => String(x).trim()).filter(Boolean))];
   if (!issns.length) {
     return {
       score: null,
@@ -1222,12 +1231,9 @@ async function fetchElsevierCiteScore(j) {
     };
   }
 
+  const proxies = await Promise.all(issns.map((issn) => fetchElsevierViaApi(issn)));
   const failReasons = [];
-  for (const rawIssn of issns) {
-    const issn = String(rawIssn).trim();
-    if (!issn) continue;
-
-    const proxy = await fetchElsevierViaApi(issn);
+  for (const proxy of proxies) {
     if (proxy.ok && proxy.payload) {
       const parsed = parseElsevierCiteScorePayload(proxy.payload);
       if (parsed.score !== null || parsed.sjr !== null || parsed.snip !== null || (parsed.subjects || []).length) {
@@ -1268,6 +1274,7 @@ function mapElsevierFailureReason(reason) {
   if (r === "missing_issn") return "缺少 ISSN";
   if (r === "api_missing_api_key") return "服务端尚未配置 Elsevier Key";
   if (r === "api_elsevier_unreachable") return "Elsevier 服务暂不可达";
+  if (r === "api_elsevier_timeout") return "Elsevier 服务响应超时";
   if (r === "api_unreachable") return "CiteScore 服务暂不可用";
   if (r.startsWith("api_http_401")) return "CiteScore 服务认证失败";
   if (r.startsWith("api_http_403")) return "CiteScore 服务请求被拒绝";
@@ -1976,6 +1983,278 @@ function renderHQ(j) {
     .join("");
 }
 
+function getJournalLookupIssn(j) {
+  return String(j?.issn || j?.eissn || "").trim();
+}
+
+function buildSubmissionStatsApiUrl(issn, suffix) {
+  return `${API_BASE}/journals/${encodeURIComponent(String(issn || "").trim())}/${suffix}`;
+}
+
+function buildGithubLoginUrl() {
+  return `${API_BASE}/auth/github/start?return_to=${encodeURIComponent(window.location.href)}`;
+}
+
+function formatSubmissionDate(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "-";
+  const parsed = new Date(text);
+  if (!Number.isFinite(parsed.getTime())) return text;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function formatSubmissionDays(value, label = "") {
+  const explicit = String(label || "").trim();
+  if (explicit) return explicit;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  const rounded = Math.round(num * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} 天`;
+}
+
+function formatSubmissionPercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  const rounded = Math.round(num * 10) / 10;
+  return `${Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)}%`;
+}
+
+function formatSubmissionScore(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  const rounded = Math.round(num * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function buildSubmissionMetric(label, value, tone = "") {
+  const cls = tone ? ` submission-metric--${tone}` : "";
+  return `
+    <div class="submission-metric${cls}">
+      <div class="submission-metric__label">${escapeHtml(label)}</div>
+      <div class="submission-metric__value">${escapeHtml(value)}</div>
+    </div>
+  `;
+}
+
+function buildSubmissionSourceCard(item, kind) {
+  const metrics = [];
+  if (kind === "official") {
+    metrics.push(buildSubmissionMetric("审稿时间", formatSubmissionDays(item.review_time_days, item.review_time_label), "official"));
+    metrics.push(buildSubmissionMetric("首轮决定", formatSubmissionDays(item.first_decision_days), "official"));
+    metrics.push(buildSubmissionMetric("录用率", formatSubmissionPercent(item.accept_rate_pct), "official"));
+  } else {
+    metrics.push(buildSubmissionMetric("审稿周期", formatSubmissionDays(item.review_time_days, item.review_time_label), "community"));
+    metrics.push(buildSubmissionMetric("命中率", formatSubmissionPercent(item.accept_rate_pct), "community"));
+    metrics.push(buildSubmissionMetric("站点评分", formatSubmissionScore(item.overall_score), "community"));
+    metrics.push(buildSubmissionMetric("样本量", safe(item.sample_size), "community"));
+  }
+
+  return `
+    <article class="submission-source-card">
+      <div class="submission-source-card__head">
+        <div>
+          <div class="submission-source-card__title">${escapeHtml(item.source_name || "未知来源")}</div>
+          <div class="submission-source-card__meta">更新：${escapeHtml(formatSubmissionDate(item.updated_at || item.fetched_at))}</div>
+        </div>
+        <a class="submission-source-card__link" href="${escapeHtml(item.source_url || "#")}" target="_blank" rel="noopener noreferrer">来源</a>
+      </div>
+      <div class="submission-source-card__metrics">
+        ${metrics.join("")}
+      </div>
+    </article>
+  `;
+}
+
+function buildSubmissionSourceBlock(title, items, kind, emptyText) {
+  const list = Array.isArray(items) ? items : [];
+  const body = list.length
+    ? `<div class="submission-source-list">${list.map((item) => buildSubmissionSourceCard(item, kind)).join("")}</div>`
+    : `<p class="placeholder">${escapeHtml(emptyText)}</p>`;
+  return `
+    <section class="submission-section">
+      <div class="submission-section__head">
+        <h3>${escapeHtml(title)}</h3>
+        <span class="submission-section__meta">${escapeHtml(list.length ? `${list.length} 条` : "暂无记录")}</span>
+      </div>
+      ${body}
+    </section>
+  `;
+}
+
+function buildUserRatingSummary(summary) {
+  const data = summary && typeof summary === "object" ? summary : {};
+  const total = Number(data.total_ratings || 0);
+  if (!total) {
+    return "<p class='placeholder'>暂无 ScanSci 用户评分，欢迎成为第一个评分者。</p>";
+  }
+
+  const cards = [
+    ["速度", formatSubmissionScore(data.speed_avg)],
+    ["编辑体验", formatSubmissionScore(data.editor_avg)],
+    ["推荐度", formatSubmissionScore(data.recommend_avg)],
+    ["综合均分", formatSubmissionScore(data.overall_avg)],
+  ];
+
+  return `
+    <div class="submission-rating-summary">
+      ${cards
+        .map(
+          ([label, value]) => `
+            <div class="submission-rating-summary__item">
+              <div class="submission-rating-summary__label">${escapeHtml(label)}</div>
+              <div class="submission-rating-summary__value">${escapeHtml(value)}</div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <div class="submission-rating-summary__count">共有 ${escapeHtml(String(total))} 位用户参与评分</div>
+  `;
+}
+
+function buildScoreOptions(selectedValue) {
+  const selected = Number(selectedValue);
+  const options = [`<option value="">请选择</option>`];
+  for (let i = 1; i <= 5; i += 1) {
+    options.push(`<option value="${i}"${selected === i ? " selected" : ""}>${i} 分</option>`);
+  }
+  return options.join("");
+}
+
+function buildUserRatingForm(issn, myRating) {
+  const rating = myRating && typeof myRating === "object" ? myRating : {};
+  const updatedText = rating.updated_at ? `你上次提交于 ${formatSubmissionDate(rating.updated_at)}` : "登录后可提交或修改评分";
+  return `
+    <form class="submission-rating-form" data-rating-form="1" data-issn="${escapeHtml(issn)}">
+      <div class="submission-rating-form__grid">
+        <label class="submission-field">
+          <span>审稿速度</span>
+          <select name="speed_score" required>${buildScoreOptions(rating.speed_score)}</select>
+        </label>
+        <label class="submission-field">
+          <span>编辑体验</span>
+          <select name="editor_score" required>${buildScoreOptions(rating.editor_score)}</select>
+        </label>
+        <label class="submission-field">
+          <span>总体推荐</span>
+          <select name="recommend_score" required>${buildScoreOptions(rating.recommend_score)}</select>
+        </label>
+      </div>
+      <div class="submission-rating-form__foot">
+        <span class="submission-rating-form__hint">${escapeHtml(updatedText)}</span>
+        <button class="submission-submit-btn" type="submit">提交评分</button>
+      </div>
+    </form>
+  `;
+}
+
+function buildSubmissionLoginCta() {
+  return `
+    <div class="submission-auth-cta">
+      <p>登录后可对该期刊的审稿速度、编辑体验和总体推荐进行评分。</p>
+      <div class="submission-auth-cta__actions">
+        <a class="submission-login-btn" href="${escapeHtml(buildGithubLoginUrl())}">GitHub 登录后评分</a>
+        <a class="submission-secondary-link" href="https://www.scansci.com/" target="_blank" rel="noopener noreferrer">邮箱登录请前往 ScanSci 首页</a>
+      </div>
+    </div>
+  `;
+}
+
+function renderSubmissionStatsError(message) {
+  if (!els.submissionPanel) return;
+  els.submissionPanel.innerHTML = `
+    <div class="submission-flash submission-flash--error">${escapeHtml(message || "投稿评价暂不可用")}</div>
+  `;
+}
+
+function renderSubmissionStats(payload, j) {
+  if (!els.submissionPanel) return;
+  const data = payload && typeof payload === "object" ? payload : {};
+  const notice = pageState.submissionNotice;
+  const noticeHtml = notice
+    ? `<div class="submission-flash submission-flash--${escapeHtml(notice.type || "info")}">${escapeHtml(notice.text || "")}</div>`
+    : "";
+
+  const officialHtml = buildSubmissionSourceBlock("官方口径", data.official_sources, "official", "暂无官方投稿指标。");
+  const communityHtml = buildSubmissionSourceBlock("社区口径", data.community_sources, "community", "暂无社区投稿评价。");
+  const summaryHtml = buildUserRatingSummary(data.user_rating_summary);
+  const viewerAuthenticated = Boolean(data.viewer_authenticated);
+  const issn = getJournalLookupIssn(j);
+  const formHtml = viewerAuthenticated ? buildUserRatingForm(issn, data.my_rating) : buildSubmissionLoginCta();
+
+  els.submissionPanel.innerHTML = `
+    ${noticeHtml}
+    ${officialHtml}
+    ${communityHtml}
+    <section class="submission-section">
+      <div class="submission-section__head">
+        <h3>ScanSci 用户评分</h3>
+        <span class="submission-section__meta">${escapeHtml(
+          viewerAuthenticated ? "已登录" : "未登录"
+        )}</span>
+      </div>
+      ${summaryHtml}
+      ${formHtml}
+    </section>
+  `;
+}
+
+async function fetchSubmissionStats(issn) {
+  const resp = await fetch(buildSubmissionStatsApiUrl(issn, "submission-stats"), {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const error = new Error(String(payload?.error || `HTTP_${resp.status}`));
+    error.status = resp.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function submitSubmissionRating(issn, body) {
+  const resp = await fetch(buildSubmissionStatsApiUrl(issn, "ratings"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const error = new Error(String(payload?.error || `HTTP_${resp.status}`));
+    error.status = resp.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function loadAndRenderSubmissionStats(j) {
+  if (!els.submissionPanel) return;
+  const issn = getJournalLookupIssn(j);
+  if (!issn) {
+    pageState.submissionStats = null;
+    els.submissionPanel.innerHTML = "<p class='placeholder'>该期刊暂无可用于投稿评价对齐的 ISSN。</p>";
+    return;
+  }
+
+  els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿评价...</p>";
+  try {
+    const payload = await fetchSubmissionStats(issn);
+    pageState.submissionStats = payload;
+    renderSubmissionStats(payload, j);
+  } catch (error) {
+    console.error("Failed to load submission stats:", error);
+    pageState.submissionStats = null;
+    renderSubmissionStatsError("投稿评价暂不可用，请稍后重试。");
+  }
+}
+
 function normalizeCASKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -2209,6 +2488,49 @@ function bindChartModalEvents() {
   });
 }
 
+function bindSubmissionEvents() {
+  if (!els.submissionPanel) return;
+  els.submissionPanel.addEventListener("submit", async (event) => {
+    const form = event.target.closest("[data-rating-form]");
+    if (!form || pageState.submissionLoading || !pageState.journal) return;
+
+    event.preventDefault();
+    const issn = String(form.dataset.issn || getJournalLookupIssn(pageState.journal)).trim();
+    if (!issn) return;
+
+    const formData = new FormData(form);
+    const payload = {
+      speed_score: Number(formData.get("speed_score")),
+      editor_score: Number(formData.get("editor_score")),
+      recommend_score: Number(formData.get("recommend_score")),
+    };
+
+    const submitBtn = form.querySelector("button[type='submit']");
+    if (submitBtn) submitBtn.setAttribute("disabled", "disabled");
+    pageState.submissionLoading = true;
+
+    try {
+      await submitSubmissionRating(issn, payload);
+      pageState.submissionNotice = { type: "success", text: "评分已提交，你可以随时修改。" };
+      await loadAndRenderSubmissionStats(pageState.journal);
+    } catch (error) {
+      console.error("Failed to submit journal rating:", error);
+      pageState.submissionNotice = {
+        type: "error",
+        text: error?.status === 401 ? "请先登录后再评分。" : "评分提交失败，请稍后重试。",
+      };
+      if (pageState.submissionStats) {
+        renderSubmissionStats(pageState.submissionStats, pageState.journal);
+      } else {
+        renderSubmissionStatsError(pageState.submissionNotice.text);
+      }
+    } finally {
+      pageState.submissionLoading = false;
+      if (submitBtn) submitBtn.removeAttribute("disabled");
+    }
+  });
+}
+
 async function tryFetchJson(path, cache = "default") {
   const res = await fetch(path, { cache, headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`HTTP ${res.status} @ ${path}`);
@@ -2292,11 +2614,15 @@ async function loadRelatedRows() {
 async function bootstrap() {
   bindSourceModalEvents();
   bindChartModalEvents();
+  bindSubmissionEvents();
   const { id, q } = getParams();
 
   const backUrl = new URL("./index.html", window.location.href);
   if (q) backUrl.searchParams.set("q", q);
   els.backLink.href = backUrl.toString();
+  if (els.submissionPanel) {
+    els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿评价...</p>";
+  }
 
   const relatedPromise = loadRelatedRows().catch(() => ({ rows: [], meta: {} }));
   const detailPayload = await loadJournalById(id);
@@ -2306,6 +2632,9 @@ async function bootstrap() {
   els.genInfo.textContent = `数据更新时间：${meta.generated_at || "-"}`;
 
   if (!row) {
+    pageState.journal = null;
+    pageState.submissionStats = null;
+    pageState.submissionNotice = null;
     els.title.textContent = "未找到期刊";
     els.subtitle.textContent = "请返回查询页重新检索";
     els.topTags.innerHTML = "";
@@ -2316,13 +2645,18 @@ async function bootstrap() {
     if (els.annualTrendChart) els.annualTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
     els.hqMetaGrid.innerHTML = "";
     els.hqRecordList.innerHTML = "<p class='placeholder'>无数据</p>";
+    if (els.submissionPanel) els.submissionPanel.innerHTML = "<p class='placeholder'>无数据</p>";
     els.relatedList.innerHTML = "<p class='placeholder'>无数据</p>";
     return;
   }
 
+  pageState.journal = row;
+  pageState.submissionStats = null;
+  pageState.submissionNotice = null;
   renderRow(row, meta);
   renderShowJCRHistory(row);
   renderHQ(row);
+  loadAndRenderSubmissionStats(row);
   els.relatedList.innerHTML = "<p class='placeholder'>正在加载相近期刊...</p>";
   relatedPromise.then((relatedPayload) => {
     const relatedRows =
@@ -2343,5 +2677,6 @@ bootstrap().catch((err) => {
   if (els.ifTrendChart) els.ifTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
   if (els.casTrendChart) els.casTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
   if (els.annualTrendChart) els.annualTrendChart.innerHTML = "<p class='placeholder'>无数据</p>";
+  if (els.submissionPanel) els.submissionPanel.innerHTML = "<p class='placeholder'>无数据</p>";
 });
 
