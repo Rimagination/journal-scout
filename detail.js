@@ -2304,35 +2304,11 @@ function renderSubmissionStats(payload, j) {
 
   const viewerAuthenticated = Boolean(data.viewer_authenticated);
   const issn = getJournalLookupIssn(j);
-  const heroHtml = buildSubmissionHero(data, viewerAuthenticated);
-  const officialHtml = buildSubmissionSourceBlock({
-    eyebrow: "期刊 / 出版社",
-    title: "公开指标",
-    description: "只保留期刊官网或出版社能明确核验的字段。",
-    items: data.official_sources,
-    kind: "official",
-    emptyTitle: "暂未收录公开指标",
-    emptyText: "这本期刊的公开页面目前没有稳定、可核验的投稿时长或录用率记录。",
-  });
-  const communityHtml = buildSubmissionSourceBlock({
-    eyebrow: "公开经验站点",
-    title: "投稿经验",
-    description: "来自公开经验站点，仅作节奏参考。",
-    items: data.community_sources,
-    kind: "community",
-    emptyTitle: "暂未收录投稿经验",
-    emptyText: "当前还没有可稳定对齐到该期刊的公开经验样本。",
-  });
   const ratingHtml = buildUserRatingSection(data.user_rating_summary, viewerAuthenticated, issn, data.my_rating);
 
   els.submissionPanel.innerHTML = `
     ${noticeHtml}
-    ${heroHtml}
-    <div class="submission-layout">
-      ${officialHtml}
-      ${communityHtml}
-      ${ratingHtml}
-    </div>
+    ${ratingHtml}
   `;
 }
 
