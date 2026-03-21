@@ -106,6 +106,7 @@ const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? "http://127.0.0.1:8000/api"
   : "https://www.scansci.com/api";
 const ELSEVIER_API_TIMEOUT_MS = 2200;
+const DETAIL_PAGE_REV = "20260321-submission-v4";
 
 const CHUNK_MANIFEST_PATHS = [
   "./data/journal_chunks_manifest.json",
@@ -275,6 +276,13 @@ function getParams() {
     id: Number(u.searchParams.get("id") || 0),
     q: u.searchParams.get("q") || "",
   };
+}
+
+function ensureDetailPageRevision() {
+  const u = new URL(window.location.href);
+  if (u.searchParams.get("v") === DETAIL_PAGE_REV) return;
+  u.searchParams.set("v", DETAIL_PAGE_REV);
+  window.history.replaceState(null, "", u.toString());
 }
 
 function lastYearToken(text) {
@@ -2395,6 +2403,7 @@ function renderRelated(all, current, q) {
       const u = new URL("./journal.html", window.location.href);
       u.searchParams.set("id", String(r.id));
       if (q) u.searchParams.set("q", q);
+      u.searchParams.set("v", DETAIL_PAGE_REV);
       const casTag = r.is_top === true ? `${safe(r.cas_2025)} (Top)` : safe(r.cas_2025);
       return `
         <a class="related-item" href="${u.toString()}">
@@ -2615,6 +2624,7 @@ async function loadRelatedRows() {
 }
 
 async function bootstrap() {
+  ensureDetailPageRevision();
   bindSourceModalEvents();
   bindChartModalEvents();
   bindSubmissionEvents();

@@ -47,6 +47,8 @@ const els = {
   cmdList: document.getElementById("cmdList"),
 };
 
+const DETAIL_PAGE_REV = "20260321-submission-v4";
+
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
 }
@@ -358,6 +360,7 @@ function gotoDetail(id, q = "") {
   const url = new URL("./journal.html", window.location.href);
   url.searchParams.set("id", String(id));
   if (q) url.searchParams.set("q", q);
+  url.searchParams.set("v", DETAIL_PAGE_REV);
   window.location.href = url.toString();
 }
 
