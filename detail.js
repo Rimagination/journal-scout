@@ -106,7 +106,7 @@ const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? "http://127.0.0.1:8000/api"
   : "https://www.scansci.com/api";
 const ELSEVIER_API_TIMEOUT_MS = 2200;
-const DETAIL_PAGE_REV = "20260321-submission-v4";
+const DETAIL_PAGE_REV = "20260321-submission-v5";
 
 const CHUNK_MANIFEST_PATHS = [
   "./data/journal_chunks_manifest.json",
@@ -2048,27 +2048,103 @@ function buildSubmissionMetric(label, value, tone = "") {
   `;
 }
 
-function buildSubmissionSourceCard(item, kind) {
-  const metrics = [];
-  if (kind === "official") {
-    metrics.push(buildSubmissionMetric("审稿时间", formatSubmissionDays(item.review_time_days, item.review_time_label), "official"));
-    metrics.push(buildSubmissionMetric("首轮决定", formatSubmissionDays(item.first_decision_days), "official"));
-    metrics.push(buildSubmissionMetric("录用率", formatSubmissionPercent(item.accept_rate_pct), "official"));
-  } else {
-    metrics.push(buildSubmissionMetric("审稿周期", formatSubmissionDays(item.review_time_days, item.review_time_label), "community"));
-    metrics.push(buildSubmissionMetric("命中率", formatSubmissionPercent(item.accept_rate_pct), "community"));
-    metrics.push(buildSubmissionMetric("站点评分", formatSubmissionScore(item.overall_score), "community"));
-    metrics.push(buildSubmissionMetric("样本量", safe(item.sample_size), "community"));
-  }
+function buildSubmissionOverviewCard(title, value, note, tone = "") {
+  const cls = tone ? ` submission-overview__card--${tone}` : "";
+  return `
+    <article class="submission-overview__card${cls}">
+      <div class="submission-overview__label">${escapeHtml(title)}</div>
+      <div class="submission-overview__value">${escapeHtml(value)}</div>
+      <p class="submission-overview__note">${escapeHtml(note)}</p>
+    </article>
+  `;
+}
+
+function buildSubmissionHero(data, viewerAuthenticated) {
+  const officialCount = Array.isArray(data?.official_sources) ? data.official_sources.length : 0;
+  const communityCount = Array.isArray(data?.community_sources) ? data.community_sources.length : 0;
+  const totalRatings = Number(data?.user_rating_summary?.total_ratings || 0);
+
+  const cards = [
+    buildSubmissionOverviewCard(
+      "公开指标",
+      officialCount ? `${officialCount} 条` : "待补充",
+      "优先看期刊官网或出版社明确披露的审稿时间、首轮决定和录用率。",
+      "official"
+    ),
+    buildSubmissionOverviewCard(
+      "投稿经验",
+      communityCount ? `${communityCount} 条` : "待补充",
+      "来自公开经验站点，只保留已对齐 ISSN 的记录，用来辅助判断节奏。",
+      "community"
+    ),
+    buildSubmissionOverviewCard(
+      "用户评分",
+      totalRatings ? `${totalRatings} 人` : viewerAuthenticated ? "等你评分" : "登录可评",
+      "站内只收结构化评分，不和公开数据混成一个总分。",
+      "rating"
+    ),
+  ];
 
   return `
-    <article class="submission-source-card">
+    <section class="submission-hero">
+      <div class="submission-hero__copy">
+        <div class="submission-hero__eyebrow">投稿参考怎么读</div>
+        <h3>先看公开披露，再看投稿经验，最后参考站内评分</h3>
+        <p>这三类信息分开展示。可核验的数据和主观体验不混算，避免把不同性质的信息揉成一个误导性的“总分”。</p>
+      </div>
+      <div class="submission-overview">
+        ${cards.join("")}
+      </div>
+    </section>
+  `;
+}
+
+function buildSubmissionEmptyState(title, text, tone = "") {
+  const cls = tone ? ` submission-empty--${tone}` : "";
+  return `
+    <div class="submission-empty${cls}">
+      <div class="submission-empty__title">${escapeHtml(title)}</div>
+      <p class="submission-empty__text">${escapeHtml(text)}</p>
+    </div>
+  `;
+}
+
+function buildSubmissionSourceCard(item, kind) {
+  const isOfficial = kind === "official";
+  const metrics = isOfficial
+    ? [
+        buildSubmissionMetric("审稿时间", formatSubmissionDays(item.review_time_days, item.review_time_label), "official"),
+        buildSubmissionMetric("首轮决定", formatSubmissionDays(item.first_decision_days), "official"),
+        buildSubmissionMetric("录用率", formatSubmissionPercent(item.accept_rate_pct), "official"),
+      ]
+    : [
+        buildSubmissionMetric("审稿周期", formatSubmissionDays(item.review_time_days, item.review_time_label), "community"),
+        buildSubmissionMetric("录用率参考", formatSubmissionPercent(item.accept_rate_pct), "community"),
+        buildSubmissionMetric("站点评分", formatSubmissionScore(item.overall_score), "community"),
+        buildSubmissionMetric("样本量", safe(item.sample_size), "community"),
+      ];
+
+  const pillLabel = isOfficial ? "公开页面" : "经验站点";
+  const pillCls = isOfficial ? "submission-pill--official" : "submission-pill--community";
+  const metaBits = [`更新：${formatSubmissionDate(item.updated_at || item.fetched_at)}`];
+  if (!isOfficial) metaBits.push("仅作选刊参考");
+
+  const sourceUrl = String(item.source_url || "").trim();
+  const sourceLinkHtml = sourceUrl
+    ? `<a class="submission-source-card__link" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">查看来源</a>`
+    : `<span class="submission-source-card__link submission-source-card__link--disabled">来源待补充</span>`;
+
+  return `
+    <article class="submission-source-card submission-source-card--${escapeHtml(kind)}">
       <div class="submission-source-card__head">
-        <div>
+        <div class="submission-source-card__main">
+          <div class="submission-source-card__kicker">
+            <span class="submission-pill ${pillCls}">${escapeHtml(pillLabel)}</span>
+            <span class="submission-source-card__meta">${escapeHtml(metaBits.join(" · "))}</span>
+          </div>
           <div class="submission-source-card__title">${escapeHtml(item.source_name || "未知来源")}</div>
-          <div class="submission-source-card__meta">更新：${escapeHtml(formatSubmissionDate(item.updated_at || item.fetched_at))}</div>
         </div>
-        <a class="submission-source-card__link" href="${escapeHtml(item.source_url || "#")}" target="_blank" rel="noopener noreferrer">来源</a>
+        ${sourceLinkHtml}
       </div>
       <div class="submission-source-card__metrics">
         ${metrics.join("")}
@@ -2077,27 +2153,46 @@ function buildSubmissionSourceCard(item, kind) {
   `;
 }
 
-function buildSubmissionSourceBlock(title, items, kind, emptyText) {
+function buildSubmissionSourceBlock(config) {
+  const {
+    eyebrow = "",
+    title = "",
+    description = "",
+    items = [],
+    kind = "official",
+    emptyTitle = "",
+    emptyText = "",
+  } = config || {};
   const list = Array.isArray(items) ? items : [];
   const body = list.length
     ? `<div class="submission-source-list">${list.map((item) => buildSubmissionSourceCard(item, kind)).join("")}</div>`
-    : `<p class="placeholder">${escapeHtml(emptyText)}</p>`;
+    : buildSubmissionEmptyState(emptyTitle, emptyText, kind);
+  const metaText = list.length ? `${list.length} 条记录` : "暂无记录";
+
   return `
-    <section class="submission-section">
+    <section class="submission-section submission-section--${escapeHtml(kind)}">
       <div class="submission-section__head">
-        <h3>${escapeHtml(title)}</h3>
-        <span class="submission-section__meta">${escapeHtml(list.length ? `${list.length} 条` : "暂无记录")}</span>
+        <div class="submission-section__titlewrap">
+          <div class="submission-section__eyebrow">${escapeHtml(eyebrow)}</div>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="submission-section__desc">${escapeHtml(description)}</p>
+        </div>
+        <span class="submission-section__meta">${escapeHtml(metaText)}</span>
       </div>
       ${body}
     </section>
   `;
 }
 
-function buildUserRatingSummary(summary) {
+function buildUserRatingSummary(summary, viewerAuthenticated) {
   const data = summary && typeof summary === "object" ? summary : {};
   const total = Number(data.total_ratings || 0);
   if (!total) {
-    return "<p class='placeholder'>暂无 ScanSci 用户评分，欢迎成为第一个评分者。</p>";
+    return buildSubmissionEmptyState(
+      "还没有站内评分",
+      viewerAuthenticated ? "你可以先提交一份结构化评分，后续可以随时修改。" : "登录后可补充你对审稿速度、编辑体验和总体推荐的判断。",
+      "rating"
+    );
   }
 
   const cards = [
@@ -2135,7 +2230,7 @@ function buildScoreOptions(selectedValue) {
 
 function buildUserRatingForm(issn, myRating) {
   const rating = myRating && typeof myRating === "object" ? myRating : {};
-  const updatedText = rating.updated_at ? `你上次提交于 ${formatSubmissionDate(rating.updated_at)}` : "登录后可提交或修改评分";
+  const updatedText = rating.updated_at ? `你上次提交于 ${formatSubmissionDate(rating.updated_at)}` : "提交后仍可继续修改";
   return `
     <form class="submission-rating-form" data-rating-form="1" data-issn="${escapeHtml(issn)}">
       <div class="submission-rating-form__grid">
@@ -2163,7 +2258,7 @@ function buildUserRatingForm(issn, myRating) {
 function buildSubmissionLoginCta() {
   return `
     <div class="submission-auth-cta">
-      <p>登录后可对该期刊的审稿速度、编辑体验和总体推荐进行评分。</p>
+      <p>登录后可提交结构化评分，补充公开指标里看不到的主观体验。</p>
       <div class="submission-auth-cta__actions">
         <a class="submission-login-btn" href="${escapeHtml(buildGithubLoginUrl())}">GitHub 登录后评分</a>
         <a class="submission-secondary-link" href="https://www.scansci.com/" target="_blank" rel="noopener noreferrer">邮箱登录请前往 ScanSci 首页</a>
@@ -2172,10 +2267,30 @@ function buildSubmissionLoginCta() {
   `;
 }
 
+function buildUserRatingSection(summary, viewerAuthenticated, issn, myRating) {
+  const summaryHtml = buildUserRatingSummary(summary, viewerAuthenticated);
+  const formHtml = viewerAuthenticated ? buildUserRatingForm(issn, myRating) : buildSubmissionLoginCta();
+
+  return `
+    <section class="submission-section submission-section--rating">
+      <div class="submission-section__head">
+        <div class="submission-section__titlewrap">
+          <div class="submission-section__eyebrow">ScanSci</div>
+          <h3>用户评分</h3>
+          <p class="submission-section__desc">站内只收结构化评分，用来补充审稿速度、编辑体验和总体推荐这类主观感受。</p>
+        </div>
+        <span class="submission-section__meta">${escapeHtml(viewerAuthenticated ? "已登录" : "未登录")}</span>
+      </div>
+      ${summaryHtml}
+      ${formHtml}
+    </section>
+  `;
+}
+
 function renderSubmissionStatsError(message) {
   if (!els.submissionPanel) return;
   els.submissionPanel.innerHTML = `
-    <div class="submission-flash submission-flash--error">${escapeHtml(message || "投稿评价暂不可用")}</div>
+    <div class="submission-flash submission-flash--error">${escapeHtml(message || "投稿参考暂不可用")}</div>
   `;
 }
 
@@ -2187,27 +2302,41 @@ function renderSubmissionStats(payload, j) {
     ? `<div class="submission-flash submission-flash--${escapeHtml(notice.type || "info")}">${escapeHtml(notice.text || "")}</div>`
     : "";
 
-  const officialHtml = buildSubmissionSourceBlock("官方口径", data.official_sources, "official", "暂无官方投稿指标。");
-  const communityHtml = buildSubmissionSourceBlock("社区口径", data.community_sources, "community", "暂无社区投稿评价。");
-  const summaryHtml = buildUserRatingSummary(data.user_rating_summary);
   const viewerAuthenticated = Boolean(data.viewer_authenticated);
   const issn = getJournalLookupIssn(j);
-  const formHtml = viewerAuthenticated ? buildUserRatingForm(issn, data.my_rating) : buildSubmissionLoginCta();
+  const heroHtml = buildSubmissionHero(data, viewerAuthenticated);
+  const officialHtml = buildSubmissionSourceBlock({
+    eyebrow: "期刊 / 出版社",
+    title: "公开指标",
+    description: "来自期刊官网或出版社公开页面，只展示能明确核验的字段。",
+    items: data.official_sources,
+    kind: "official",
+    emptyTitle: "暂未收录公开指标",
+    emptyText: "这本期刊的公开页面目前没有稳定、可核验的投稿时长或录用率记录。",
+  });
+  const communityHtml = buildSubmissionSourceBlock({
+    eyebrow: "公开经验站点",
+    title: "投稿经验",
+    description: "来自公开经验站点，仅保留已对齐 ISSN 的记录，适合作为节奏参考。",
+    items: data.community_sources,
+    kind: "community",
+    emptyTitle: "暂未收录投稿经验",
+    emptyText: "当前还没有可稳定对齐到该期刊的公开经验样本。",
+  });
+  const ratingHtml = buildUserRatingSection(data.user_rating_summary, viewerAuthenticated, issn, data.my_rating);
 
   els.submissionPanel.innerHTML = `
     ${noticeHtml}
-    ${officialHtml}
-    ${communityHtml}
-    <section class="submission-section">
-      <div class="submission-section__head">
-        <h3>ScanSci 用户评分</h3>
-        <span class="submission-section__meta">${escapeHtml(
-          viewerAuthenticated ? "已登录" : "未登录"
-        )}</span>
+    ${heroHtml}
+    <div class="submission-layout">
+      <div class="submission-stack">
+        ${officialHtml}
+        ${communityHtml}
       </div>
-      ${summaryHtml}
-      ${formHtml}
-    </section>
+      <div class="submission-stack">
+        ${ratingHtml}
+      </div>
+    </div>
   `;
 }
 
@@ -2250,11 +2379,11 @@ async function loadAndRenderSubmissionStats(j) {
   const issn = getJournalLookupIssn(j);
   if (!issn) {
     pageState.submissionStats = null;
-    els.submissionPanel.innerHTML = "<p class='placeholder'>该期刊暂无可用于投稿评价对齐的 ISSN。</p>";
+    els.submissionPanel.innerHTML = "<p class='placeholder'>该期刊暂无可用于投稿参考对齐的 ISSN。</p>";
     return;
   }
 
-  els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿评价...</p>";
+  els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿参考...</p>";
   try {
     const payload = await fetchSubmissionStats(issn);
     pageState.submissionStats = payload;
@@ -2262,7 +2391,7 @@ async function loadAndRenderSubmissionStats(j) {
   } catch (error) {
     console.error("Failed to load submission stats:", error);
     pageState.submissionStats = null;
-    renderSubmissionStatsError("投稿评价暂不可用，请稍后重试。");
+    renderSubmissionStatsError("投稿参考暂不可用，请稍后重试。");
   }
 }
 
@@ -2634,7 +2763,7 @@ async function bootstrap() {
   if (q) backUrl.searchParams.set("q", q);
   els.backLink.href = backUrl.toString();
   if (els.submissionPanel) {
-    els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿评价...</p>";
+    els.submissionPanel.innerHTML = "<p class='placeholder'>正在加载投稿参考...</p>";
   }
 
   const relatedPromise = loadRelatedRows().catch(() => ({ rows: [], meta: {} }));
