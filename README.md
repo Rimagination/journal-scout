@@ -45,5 +45,6 @@ python .\dev_server.py --port 8000
 - 你后续确认后，可以再接后端 API 与增量同步任务。
 - IF/JCR、中科院分区、预警、CCF/CCFT 优先来源于 `ShowJCR` 的 `jcr.db`；若无数据库才回退到 CSV。
 - 官网链接优先使用本地数据；若识别为目录站/聚合站链接，会改由 OpenAlex 重新解析期刊官网。
-- 官方站点模式下，详情页会优先请求 `https://www.scansci.com/api/elsevier/serial-title`（由服务端统一托管 Elsevier Key），用户端无需配置 Key。
+- 官方站点模式下，详情页会优先请求 `https://www.scansci.com/api/elsevier/serial-title`（Cloudflare Worker，无冷启动），用户端无需配置 Key。
+- 详情页对 Elsevier 请求启用短超时与并发 ISSN 兜底；接口暂不可用时会自动回退为 OpenAlex 参考值，避免页面长时间等待。
 - 本地开发可继续使用 `dev_server.py` + `ELSEVIER_API_KEY` 以调试代理流程。
