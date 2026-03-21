@@ -2006,6 +2006,7 @@ function formatSubmissionDate(raw) {
 function formatSubmissionDays(value, label = "") {
   const explicit = String(label || "").trim();
   if (explicit) return explicit;
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
   const rounded = Math.round(num * 10) / 10;
@@ -2014,6 +2015,7 @@ function formatSubmissionDays(value, label = "") {
 }
 
 function formatSubmissionPercent(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
   const rounded = Math.round(num * 10) / 10;
@@ -2021,6 +2023,7 @@ function formatSubmissionPercent(value) {
 }
 
 function formatSubmissionScore(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
   const rounded = Math.round(num * 10) / 10;
