@@ -149,11 +149,14 @@ function toBoolText(v) {
 }
 
 function levelRank(level) {
-  const s = String(level || "").toUpperCase().trim();
-  if (/^T[1-4]$/.test(s)) return Number(s.slice(1));
-  if (s === "A类") return 11;
-  if (s === "B类") return 12;
-  if (s === "C类") return 13;
+  const s = String(level || "").trim();
+  const su = s.toUpperCase();
+  if (/^T[1-4]$/i.test(s)) return Number(s.slice(1));
+  if (su === "A+" || su === "A类") return 11;
+  if (su === "A") return 12;
+  if (su === "B类" || su === "B") return 13;
+  if (su === "C类" || su === "C") return 14;
+  if (su === "D") return 15;
   return 99;
 }
 
@@ -2693,7 +2696,7 @@ function toSafeBucket(id, chunkCount) {
 }
 
 async function loadJournalFromChunks(id) {
-  const manifest = await fetchJsonWithFallback(CHUNK_MANIFEST_PATHS, "force-cache");
+  const manifest = await fetchJsonWithFallback(CHUNK_MANIFEST_PATHS, "default");
   const meta = manifest?.meta || {};
   const chunkCountRaw = Number(meta.chunk_count);
   const chunkCount = Number.isFinite(chunkCountRaw) && chunkCountRaw > 0 ? chunkCountRaw : 64;
@@ -2705,7 +2708,7 @@ async function loadJournalFromChunks(id) {
   const defaultRel = `journal_chunks/chunk-${String(bucket).padStart(2, "0")}.json`;
   const rel = String(chunkMeta?.file || defaultRel);
 
-  const chunkPayload = await fetchJsonWithFallback(resolveDataPathCandidates(rel), "force-cache");
+  const chunkPayload = await fetchJsonWithFallback(resolveDataPathCandidates(rel), "default");
   const rows = Array.isArray(chunkPayload?.journals) ? chunkPayload.journals : [];
   const row = rows.find((r) => Number(r?.id) === Number(id)) || null;
   return { row, meta, rows };
@@ -2730,7 +2733,7 @@ async function loadJournalById(id) {
 }
 
 async function loadRelatedRows() {
-  const payload = await fetchJsonWithFallback(SEARCH_INDEX_PATHS, "force-cache");
+  const payload = await fetchJsonWithFallback(SEARCH_INDEX_PATHS, "default");
   return {
     rows: Array.isArray(payload?.journals) ? payload.journals : [],
     meta: payload?.meta || {},
