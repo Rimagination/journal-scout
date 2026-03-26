@@ -571,15 +571,21 @@ h1 {
 .detail-page .spotlight-layout {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-areas:
+    "visual content"
+    "meta   meta"
+    "summary summary";
   gap: 14px;
   align-items: start;
 }
 
 .detail-page .spotlight-visual {
+  grid-area: visual;
   min-width: 0;
 }
 
 .detail-page .spotlight-content {
+  grid-area: content;
   min-width: 0;
   display: grid;
   gap: 10px;
@@ -610,7 +616,8 @@ h1 {
 }
 
 .detail-page .spotlight-summary-wrap {
-  margin-top: 2px;
+  grid-area: summary;
+  margin-top: 0;
   border: 1px solid #e7e1d4;
   border-radius: 10px;
   background: #fffdf8;
@@ -918,7 +925,9 @@ h1 {
 }
 
 .detail-page .spotlight-grid--under-cover {
-  margin-top: 8px;
+  grid-area: meta;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 0;
 }
 
 .detail-page .spotlight-grid .kv,
@@ -2552,10 +2561,6 @@ h1 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .detail-page .spotlight-grid {
-    grid-template-columns: 1fr;
-  }
-
   .submission-hero,
   .submission-layout {
     grid-template-columns: 1fr;
@@ -2612,6 +2617,11 @@ h1 {
 
   .detail-page .spotlight-layout {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "visual"
+      "content"
+      "meta"
+      "summary";
     gap: 12px;
   }
 
@@ -2625,8 +2635,8 @@ h1 {
     margin: 0 auto;
   }
 
-  .detail-page .spotlight-grid {
-    grid-template-columns: 1fr;
+  .detail-page .spotlight-grid--under-cover {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .source-modal__card {
