@@ -1547,20 +1547,23 @@ function renderRow(j, meta) {
     });
   });
 
+  const isChinese = !!j.cn_number;
   const kv = [
     { k: "ISSN", v: safe(j.issn) },
     { k: "eISSN", v: safe(j.eissn) },
-    { k: "CN号", v: safe(j.cn_number) },
+    ...(isChinese ? [{ k: "CN号", v: safe(j.cn_number) }] : []),
     { k: ifLabel, v: safe(j.if_2023), info: "showjcr" },
     { k: jcrLabel, v: safe(j.jcr_quartile), info: "showjcr" },
     { k: xuankanLabel, v: xuankanText },
     { k: casLabel, v: casText, info: "showjcr" },
     { k: `中科院大类${casYear ? `（${casYear}）` : ""}`, v: safe(latestCas?.category || ""), info: "showjcr", span: 2 },
     { k: `中科院小类${casYear ? `（${casYear}）` : ""}`, v: safe(casSubText), info: "showjcr", span: 2, multiline: true },
-    { k: "SSCI", v: ssciText },
-    { k: "CSCD", v: safe(j.cscd_type) },
-    { k: "北大核心", v: pkuCoreText },
-    { k: "CSSCI", v: cssciText },
+    ...(isChinese ? [
+      { k: "SSCI", v: ssciText },
+      { k: "CSCD", v: safe(j.cscd_type) },
+      { k: "北大核心", v: pkuCoreText },
+      { k: "CSSCI", v: cssciText },
+    ] : []),
     { k: "新锐预警", v: j.xuankan_warning ? "在评" : "-" },
     { k: warningLabel, v: safe(j.warning_latest), info: "warning", span: 2 },
   ];
