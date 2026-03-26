@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import html as html_lib
+import openpyxl
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 from dataclasses import dataclass, field
@@ -39,6 +40,8 @@ SEARCH_INDEX_FIELDS = [
     "cssci_type",
     "cscd_type",
     "warning_latest",
+    "xuankan_2026",
+    "xuankan_warning",
     "tags",
 ]
 
@@ -119,6 +122,8 @@ class Journal:
     oa_status: str = ""
     warning_latest: str = ""
     warning_latest_year: str = ""
+    xuankan_2026: str = ""
+    xuankan_warning: bool = False
     cscd_type: str = ""
     pku_core: bool = False
     cssci_type: str = ""
@@ -257,6 +262,8 @@ class Journal:
             "oa_status": self.oa_status,
             "warning_latest": self.warning_latest,
             "warning_latest_year": self.warning_latest_year,
+            "xuankan_2026": self.xuankan_2026,
+            "xuankan_warning": self.xuankan_warning,
             "cscd_type": self.cscd_type,
             "pku_core": self.pku_core,
             "cssci_type": self.cssci_type,
@@ -420,6 +427,10 @@ class JournalStore:
                 j.tags.append(f"HQ-{j.hq_level}")
             if j.is_top is True:
                 j.tags.append("中科院Top")
+            if j.xuankan_2026:
+                j.tags.append(f"新锐{j.xuankan_2026}")
+            if j.xuankan_warning:
+                j.tags.append("新锐预警")
             if j.warning_latest:
                 j.tags.append("期刊预警")
             if j.ccf_records:
@@ -964,6 +975,66 @@ def load_showjcr_data(store: JournalStore) -> Dict[str, str]:
         meta["showjcr_jcr_year"] = jcr_year
 
     return meta
+
+
+def load_xuankan_tier(store: JournalStore) -> None:
+    xlsx_path = Path(__file__).resolve().parent / "2026新锐期刊分区信息下载.xlsx"
+    if not xlsx_path.exists():
+        return
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    ws = wb.active
+    header = None
+    for row in ws.iter_rows(values_only=True):
+        if header is None:
+            header = [str(c or "").strip() for c in row]
+            continue
+        row_dict = dict(zip(header, [str(c or "").strip() for c in row]))
+        title = row_dict.get("期刊名称", "")
+        issn = normalize_issn(row_dict.get("ISSN", ""))
+        eissn = normalize_issn(row_dict.get("EISSN", ""))
+        rank = parse_rank(row_dict.get("分区", ""))
+        if not rank:
+            continue
+        j = store.get_or_create(title=title, issn=issn, eissn=eissn)
+        if title and (not j.title or j.title.startswith("Unknown-")):
+            j.title = title
+        if issn and not j.issn:
+            j.issn = issn
+        if eissn and not j.eissn:
+            j.eissn = eissn
+        if not j.xuankan_2026:
+            j.xuankan_2026 = rank
+        store.touch_index(j)
+    wb.close()
+
+
+def load_xuankan_warning(store: JournalStore) -> None:
+    xlsx_path = Path(__file__).resolve().parent / "2026年新锐分区期刊under review名单下载.xlsx"
+    if not xlsx_path.exists():
+        return
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    ws = wb.active
+    header = None
+    for row in ws.iter_rows(values_only=True):
+        if header is None:
+            header = [str(c or "").strip() for c in row]
+            continue
+        row_dict = dict(zip(header, [str(c or "").strip() for c in row]))
+        title = row_dict.get("期刊名称", "")
+        issn = normalize_issn(row_dict.get("ISSN", ""))
+        eissn = normalize_issn(row_dict.get("EISSN", ""))
+        if not title and not issn and not eissn:
+            continue
+        j = store.get_or_create(title=title, issn=issn, eissn=eissn)
+        if title and (not j.title or j.title.startswith("Unknown-")):
+            j.title = title
+        if issn and not j.issn:
+            j.issn = issn
+        if eissn and not j.eissn:
+            j.eissn = eissn
+        j.xuankan_warning = True
+        store.touch_index(j)
+    wb.close()
 
 
 def load_cscd_md(store: JournalStore) -> None:
@@ -1798,6 +1869,8 @@ def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     store = JournalStore()
     showjcr_meta = load_showjcr_data(store)
+    load_xuankan_tier(store)
+    load_xuankan_warning(store)
     load_cscd_md(store)
     hq_field_stats = load_hq_catalog(store)
     cnki_meta = load_cnki_scholar_data(store)

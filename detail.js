@@ -306,6 +306,9 @@ function buildPriorityTags(row) {
   if (row.jcr_quartile) {
     pushTag(`JCR ${row.jcr_quartile}`, "tag--jcr");
   }
+  if (row.xuankan_2026) {
+    pushTag(`新锐${row.xuankan_2026}`, "tag--xuankan");
+  }
   if (row.cas_2025) {
     const top = row.is_top === true ? " (Top)" : "";
     pushTag(`中科院${row.cas_2025}${top}`, "tag--cas");
@@ -355,6 +358,9 @@ function buildPriorityTags(row) {
   }
   if (rowTags.some((t) => String(t).toUpperCase() === "EI")) {
     pushTag("EI", "tag--ei");
+  }
+  if (row.xuankan_warning) {
+    pushTag("新锐预警", "tag--xuankan-warn");
   }
   if (row.warning_latest) {
     pushTag("中科院预警", "tag--warn");
@@ -1507,6 +1513,8 @@ function renderRow(j, meta) {
   const jcrLabel = ifYear ? `JCR分区 (${ifYear})` : "JCR分区";
   const casLabel = casYear ? `中科院分区（${casYear}）` : "中科院分区";
   const warningLabel = j.warning_latest_year ? `中科院预警 (${j.warning_latest_year})` : "中科院预警";
+  const xuankanLabel = "新锐分区（2026）";
+  const xuankanText = safe(j.xuankan_2026);
   const latestCas = [...(Array.isArray(j.cas_history) ? j.cas_history : [])].sort((a, b) => yearNum(b.year) - yearNum(a.year))[0];
   pageState.journal = j;
   pageState.latestCas = latestCas || null;
@@ -1545,6 +1553,7 @@ function renderRow(j, meta) {
     { k: "CN号", v: safe(j.cn_number) },
     { k: ifLabel, v: safe(j.if_2023), info: "showjcr" },
     { k: jcrLabel, v: safe(j.jcr_quartile), info: "showjcr" },
+    { k: xuankanLabel, v: xuankanText },
     { k: casLabel, v: casText, info: "showjcr" },
     { k: `中科院大类${casYear ? `（${casYear}）` : ""}`, v: safe(latestCas?.category || ""), info: "showjcr", span: 2 },
     { k: `中科院小类${casYear ? `（${casYear}）` : ""}`, v: safe(casSubText), info: "showjcr", span: 2, multiline: true },
@@ -1552,6 +1561,7 @@ function renderRow(j, meta) {
     { k: "CSCD", v: safe(j.cscd_type) },
     { k: "北大核心", v: pkuCoreText },
     { k: "CSSCI", v: cssciText },
+    { k: "新锐预警", v: j.xuankan_warning ? "在评" : "-" },
     { k: warningLabel, v: safe(j.warning_latest), info: "warning", span: 2 },
   ];
 

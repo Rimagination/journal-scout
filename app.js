@@ -209,6 +209,10 @@ function buildPriorityTags(row) {
     pushTag(tags, `JCR ${row.jcr_quartile}`, "tag--jcr");
   }
 
+  if (row.xuankan_2026) {
+    pushTag(tags, `新锐${row.xuankan_2026}`, "tag--xuankan");
+  }
+
   if (row.cas_2025) {
     const suffix = row.is_top === true ? " (Top)" : "";
     pushTag(tags, `${TAG_TEXT.casPrefix}${row.cas_2025}${suffix}`, "tag--cas");
@@ -254,6 +258,10 @@ function buildPriorityTags(row) {
 
   if (rowTags.some((t) => String(t).toUpperCase() === "EI")) {
     pushTag(tags, "EI", "tag--ei");
+  }
+
+  if (row.xuankan_warning) {
+    pushTag(tags, "新锐预警", "tag--xuankan-warn");
   }
 
   if (row.warning_latest) {
