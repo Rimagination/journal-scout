@@ -2586,10 +2586,10 @@ h1 {
     grid-template-columns: 1fr;
     grid-template-areas:
       "core"
+      "hq"
       "spotlight"
       "submission"
       "trend"
-      "hq"
       "related";
   }
 
