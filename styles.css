@@ -2585,10 +2585,10 @@ h1 {
   .detail-page .detail-main {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "core"
       "spotlight"
       "submission"
       "trend"
-      "core"
       "hq"
       "related";
   }
