@@ -1565,7 +1565,7 @@ function renderRow(j, meta) {
       { k: "CSSCI", v: cssciText },
     ] : []),
     { k: "新锐预警", v: j.xuankan_warning ? "在评" : "-" },
-    { k: warningLabel, v: safe(j.warning_latest), info: "warning", span: 2 },
+    { k: warningLabel, v: safe(j.warning_latest), info: "warning" },
   ];
 
   els.coreGrid.innerHTML = kv
