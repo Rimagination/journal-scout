@@ -22,6 +22,7 @@ const DATA_PATH_CACHE_KEY = "journal_scout_data_path";
 const TAG_TEXT = {
   casPrefix: "\u4e2d\u79d1\u9662",
   hqPrefix: "\u79d1\u534f-",
+  ni: "NI\u671f\u520a",
   pku: "\u5317\u5927\u6838\u5fc3",
   cssci: "CSSCI",
   cssciExt: "CSSCI(\u6269\u5c55)",
@@ -47,7 +48,7 @@ const els = {
   cmdList: document.getElementById("cmdList"),
 };
 
-const DETAIL_PAGE_REV = "20260321-submission-v6";
+const DETAIL_PAGE_REV = "20260327-ni-v1";
 
 function safe(v) {
   return v === null || v === undefined || v === "" ? "-" : String(v);
@@ -221,6 +222,10 @@ function buildPriorityTags(row) {
   const hqLevel = deriveHqLevel(row, rowTags);
   if (hqLevel) {
     pushTag(tags, `${TAG_TEXT.hqPrefix}${hqLevel}`, "tag--hq");
+  }
+
+  if (row.ni_journal === true || rowTags.includes(TAG_TEXT.ni)) {
+    pushTag(tags, TAG_TEXT.ni, "tag--ni");
   }
 
   if (row.pku_core === true || rowTags.includes(TAG_TEXT.pku)) {

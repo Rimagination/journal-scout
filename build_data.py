@@ -23,6 +23,7 @@ CHUNK_MANIFEST_FILE = OUT_DIR / "journal_chunks_manifest.json"
 CHUNK_COUNT = 64
 SHOWJCR_DATA_SUBDIR = "中科院分区表及JCR原始数据文件"
 CNKI_SCHOLAR_JSON_URL = "https://gitee.com/kailangge/cnki-journals/raw/main/cnki_journals.json"
+NATURE_INDEX_FAQ_URL = "https://www.nature.com/nature-index/faq?spm=5176.28103460.0.0.39f27551AqtfKA#journals"
 
 SEARCH_INDEX_FIELDS = [
     "id",
@@ -42,6 +43,7 @@ SEARCH_INDEX_FIELDS = [
     "warning_latest",
     "xuankan_2026",
     "xuankan_warning",
+    "ni_journal",
     "tags",
 ]
 
@@ -136,6 +138,7 @@ class Journal:
     hq_catalog: bool = False
     hq_level: str = ""
     hq_records: List[Dict[str, str]] = field(default_factory=list)
+    ni_journal: bool = False
     tags: List[str] = field(default_factory=list)
     sources: List[str] = field(default_factory=list)
 
@@ -279,6 +282,7 @@ class Journal:
             "hq_societies": hq_societies,
             "hq_levels": hq_levels,
             "hq_records": unique_records,
+            "ni_journal": self.ni_journal,
             "tags": sorted(set(self.tags)),
             "sources": sorted(set(self.sources)),
         }
@@ -289,6 +293,16 @@ def normalize_title(title: str) -> str:
     t = re.sub(r"\s+", " ", t)
     t = re.sub(r"[^\w\u4e00-\u9fff]", "", t)
     return t
+
+
+def normalize_nature_index_title(title: str) -> str:
+    s = html_lib.unescape(str(title or "").strip())
+    s = re.sub(r"^the\s+", "", s, flags=re.I)
+    s = s.replace("&", " and ").replace("＆", " and ")
+    s = re.sub(r"\s+", " ", s)
+    s = s.lower()
+    s = re.sub(r"[^\w\u4e00-\u9fff]", "", s)
+    return s
 
 
 def normalize_issn(raw: str) -> str:
@@ -425,6 +439,8 @@ class JournalStore:
                 j.tags.append("高质量目录")
             if j.hq_level:
                 j.tags.append(f"HQ-{j.hq_level}")
+            if j.ni_journal:
+                j.tags.append("NI期刊")
             if j.is_top is True:
                 j.tags.append("中科院Top")
             if j.xuankan_2026:
@@ -1085,6 +1101,24 @@ def fetch_json_url(url: str, timeout: int = 30):
         return None
 
 
+def fetch_text_url(url: str, timeout: int = 30) -> Optional[str]:
+    req = urllib_request.Request(
+        url,
+        headers={
+            "User-Agent": "JournalScoutDataBuilder/1.0",
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return None
+    except Exception:
+        return None
+    return raw.decode("utf-8", errors="ignore")
+
+
 def normalize_tag_text(raw: str) -> str:
     s = str(raw or "").strip()
     s = s.replace("（", "(").replace("）", ")")
@@ -1134,6 +1168,19 @@ def extract_wos_tokens(raw: str) -> List[str]:
     if re.search(r"\bEI\b", re.sub(r"[^A-Z]", " ", s)):
         out.add("EI")
     return sorted(out)
+
+
+NATURE_INDEX_TITLE_ALIASES: Dict[str, List[str]] = {
+    "Proceedings of the Royal Society B": ["PROCEEDINGS OF THE ROYAL SOCIETY B-BIOLOGICAL SCIENCES"],
+    "The ISME Journal: Multidisciplinary Journal of Microbial Ecology": ["ISME Journal", "The ISME Journal"],
+    "British Journal of Surgery": ["BJS-British Journal of Surgery"],
+    "JAMA: The Journal of the American Medical Association": ["JAMA-JOURNAL OF THE AMERICAN MEDICAL ASSOCIATION", "JAMA"],
+    "Journal of Physiology": ["JOURNAL OF PHYSIOLOGY-LONDON"],
+    "Journal of the National Cancer Institute": ["JNCI-Journal of the National Cancer Institute"],
+    "The BMJ": ["BMJ-British Medical Journal", "BMJ"],
+    # Nature Index lists the Letters edition; the local source data only carries the parent title.
+    "Monthly Notices of the Royal Astronomical Society: Letters": ["MONTHLY NOTICES OF THE ROYAL ASTRONOMICAL SOCIETY"],
+}
 
 
 def load_cnki_scholar_data(store: JournalStore) -> Dict[str, object]:
@@ -1236,6 +1283,156 @@ def load_cnki_scholar_data(store: JournalStore) -> Dict[str, object]:
         store.touch_index(j)
 
     meta["cnki_scholar_updated_journals"] = len(updated_ids)
+    return meta
+
+
+def strip_html_fragment_text(fragment: str) -> str:
+    text = re.sub(r"<.*?>", "", str(fragment or ""), flags=re.S)
+    text = html_lib.unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def parse_nature_index_subject_groups(page_html: str) -> Dict[str, List[str]]:
+    heading_match = re.search(
+        r'<h2[^>]+id=["\']subjects["\'][^>]*>\s*15\..*?</h2>',
+        page_html,
+        flags=re.I | re.S,
+    )
+    if not heading_match:
+        return {}
+
+    section_start = heading_match.end()
+    next_heading = page_html.find("<h2", section_start)
+    section_html = page_html[section_start:] if next_heading < 0 else page_html[section_start:next_heading]
+    groups: Dict[str, List[str]] = {}
+    for group_html, items_html in re.findall(r"<h3[^>]*>(.*?)</h3>\s*<ul>(.*?)</ul>", section_html, flags=re.I | re.S):
+        group_name = strip_html_fragment_text(group_html)
+        titles: List[str] = []
+        for item_html in re.findall(r"<li[^>]*>(.*?)</li>", items_html, flags=re.I | re.S):
+            title = strip_html_fragment_text(item_html)
+            title = re.sub(r"\s*\(only articles classified in this subject area\)\s*$", "", title, flags=re.I)
+            if title:
+                titles.append(title)
+        if group_name and titles:
+            groups[group_name] = titles
+    return groups
+
+
+def nature_index_match_score(j: Journal) -> Tuple[int, int, int, int, int]:
+    filled = sum(
+        1
+        for v in (
+            j.issn,
+            j.eissn,
+            j.cn_number,
+            j.publisher,
+            j.official_url,
+            j.jcr_quartile,
+            j.cas_2025,
+            j.hq_level,
+            j.cssci_type,
+            j.cscd_type,
+            j.warning_latest,
+            j.xuankan_2026,
+        )
+        if str(v or "").strip()
+    )
+    metric_filled = 1 if j.if_2023 is not None else 0
+    history_size = len(j.if_history) + len(j.cas_history) + len(j.warning_history) + len(j.ccf_records) + len(j.ccft_records)
+    identifier_score = int(bool(j.issn)) + int(bool(j.eissn)) + int(bool(j.cn_number))
+    return (filled, metric_filled, history_size, identifier_score, -j.id)
+
+
+def pick_best_nature_index_match(matches: List[Journal]) -> Optional[Journal]:
+    if not matches:
+        return None
+    ranked = sorted(matches, key=nature_index_match_score, reverse=True)
+    if len(ranked) == 1:
+        return ranked[0]
+    best_score = nature_index_match_score(ranked[0])
+    next_score = nature_index_match_score(ranked[1])
+    return ranked[0] if best_score > next_score else None
+
+
+def load_nature_index_catalog(store: JournalStore) -> Dict[str, object]:
+    meta: Dict[str, object] = {
+        "nature_index_source_url": NATURE_INDEX_FAQ_URL,
+        "nature_index_group_count": 0,
+        "nature_index_total_entries": 0,
+        "nature_index_unique_titles": 0,
+        "nature_index_matched_titles": 0,
+        "nature_index_marked_journals": 0,
+        "nature_index_alias_matches": 0,
+        "nature_index_unmatched_titles": [],
+        "nature_index_error": "",
+    }
+
+    page_html = fetch_text_url(NATURE_INDEX_FAQ_URL, timeout=45)
+    if not page_html:
+        meta["nature_index_error"] = "fetch_failed"
+        return meta
+
+    groups = parse_nature_index_subject_groups(page_html)
+    if not groups:
+        meta["nature_index_error"] = "parse_failed"
+        return meta
+
+    meta["nature_index_group_count"] = len(groups)
+    meta["nature_index_total_entries"] = sum(len(titles) for titles in groups.values())
+
+    unique_titles: List[str] = []
+    seen_titles: set[str] = set()
+    for titles in groups.values():
+        for title in titles:
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+            unique_titles.append(title)
+    meta["nature_index_unique_titles"] = len(unique_titles)
+
+    title_map: Dict[str, List[Journal]] = {}
+    for j in store.items.values():
+        key = normalize_nature_index_title(j.title)
+        if key:
+            title_map.setdefault(key, []).append(j)
+
+    marked_ids: set[int] = set()
+    unmatched_titles: List[str] = []
+    alias_matches = 0
+    for title in unique_titles:
+        candidates = [title, *NATURE_INDEX_TITLE_ALIASES.get(title, [])]
+        candidate_matches: Dict[int, Tuple[Journal, bool]] = {}
+        for idx, candidate_title in enumerate(candidates):
+            key = normalize_nature_index_title(candidate_title)
+            if not key:
+                continue
+            matches = title_map.get(key, [])
+            if not matches:
+                continue
+            for journal in matches:
+                prior = candidate_matches.get(journal.id)
+                used_alias = idx > 0
+                if prior is None or (prior[1] and not used_alias):
+                    candidate_matches[journal.id] = (journal, used_alias)
+
+        matched_journal: Optional[Journal] = pick_best_nature_index_match([x[0] for x in candidate_matches.values()])
+        if not matched_journal:
+            unmatched_titles.append(title)
+            continue
+
+        meta["nature_index_matched_titles"] = int(meta["nature_index_matched_titles"]) + 1
+        used_alias = candidate_matches.get(matched_journal.id, (matched_journal, False))[1]
+        if used_alias:
+            alias_matches += 1
+        matched_journal.ni_journal = True
+        matched_journal.sources.append("nature-index")
+        marked_ids.add(matched_journal.id)
+        store.touch_index(matched_journal)
+
+    meta["nature_index_marked_journals"] = len(marked_ids)
+    meta["nature_index_alias_matches"] = alias_matches
+    meta["nature_index_unmatched_titles"] = unmatched_titles
     return meta
 
 
@@ -1874,6 +2071,7 @@ def build() -> None:
     load_cscd_md(store)
     hq_field_stats = load_hq_catalog(store)
     cnki_meta = load_cnki_scholar_data(store)
+    nature_index_meta = load_nature_index_catalog(store)
 
     data = store.finalize()
     hq_catalog_journals = sum(1 for row in data if row.get("hq_catalog"))
@@ -1885,6 +2083,7 @@ def build() -> None:
             "cas_if_source": "showjcr_db" if showjcr_meta.get("showjcr_db_file") else "showjcr_csv",
             **showjcr_meta,
             **cnki_meta,
+            **nature_index_meta,
             "total_journals": len(data),
             "hq_catalog_journals": hq_catalog_journals,
             "hq_field_count": len(hq_field_stats),

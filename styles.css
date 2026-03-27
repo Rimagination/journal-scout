@@ -324,6 +324,12 @@ input:focus {
   color: #965613;
 }
 
+.tag--ni {
+  border-color: #9ec7f0;
+  background: #ecf5ff;
+  color: #1d5ea8;
+}
+
 .tag--pku {
   border-color: #f0c2c8;
   background: #fff0f3;

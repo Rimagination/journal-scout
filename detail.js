@@ -106,7 +106,7 @@ const API_BASE = ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? "http://127.0.0.1:8000/api"
   : "https://www.scansci.com/api";
 const ELSEVIER_API_TIMEOUT_MS = 2200;
-const DETAIL_PAGE_REV = "20260321-submission-v6";
+const DETAIL_PAGE_REV = "20260327-ni-v1";
 
 const CHUNK_MANIFEST_PATHS = [
   "./data/journal_chunks_manifest.json",
@@ -318,6 +318,9 @@ function buildPriorityTags(row) {
   }
   if (row.hq_level) {
     pushTag(`科协-${row.hq_level}`, "tag--hq");
+  }
+  if (row.ni_journal === true || rowTags.includes("NI期刊")) {
+    pushTag("NI期刊", "tag--ni");
   }
   if (row.pku_core === true || rowTags.includes("北大核心")) {
     pushTag("北大核心", "tag--pku");
@@ -1557,6 +1560,7 @@ function renderRow(j, meta) {
     ...(isChinese ? [{ k: "CN号", v: safe(j.cn_number) }] : []),
     { k: ifLabel, v: safe(j.if_2023), info: "showjcr" },
     { k: jcrLabel, v: safe(j.jcr_quartile), info: "showjcr" },
+    ...(j.ni_journal ? [{ k: "NI期刊", v: "是" }] : []),
     { k: xuankanLabel, v: xuankanText },
     { k: casLabel, v: casText, info: "showjcr" },
     { k: `中科院大类${casYear ? `（${casYear}）` : ""}`, v: safe(latestCas?.category || ""), info: "showjcr", span: 2 },
