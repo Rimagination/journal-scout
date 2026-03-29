@@ -317,18 +317,31 @@ function findSuggestions(query, limit = 12) {
     .map((x) => x.row);
 }
 
+function isAbbreviationMatch(row, query) {
+  const qAbbr = normalizeAbbrQuery(query);
+  if (!isAbbrQuery(qAbbr)) return false;
+  return getAbbrVariants(row).some((abbr) => abbr === qAbbr || abbr.startsWith(qAbbr));
+}
+
 function suggestionItem(row, idx) {
+  const query = String(els.searchInput?.value || "").trim();
   const ids = [row.issn, row.cn_number].filter(Boolean).join(" / ");
   const tagsHtml = renderTagList(buildPriorityTags(row));
   const ifYear = formatIFAcademicYear(row.if_year);
   const ifYearText = ifYear ? `(${ifYear})` : "";
   const ifText = row.if_2023 === null || row.if_2023 === undefined ? "-" : safe(row.if_2023);
   const activeCls = idx === state.activeIndex ? "is-active" : "";
+  const matchHint = isAbbreviationMatch(row, query)
+    ? `<span class="suggestion__match-hint">缩写匹配</span>`
+    : "";
 
   return `
     <button class="suggestion ${activeCls}" data-id="${escapeHtml(String(row.id))}" data-idx="${idx}" type="button">
       <div class="suggestion__main">
-        <div class="suggestion__title">${escapeHtml(row.title || "\u672a\u77e5\u671f\u520a")}</div>
+        <div class="suggestion__title-row">
+          <div class="suggestion__title">${escapeHtml(row.title || "\u672a\u77e5\u671f\u520a")}</div>
+          ${matchHint}
+        </div>
         <div class="suggestion__meta">${escapeHtml(safe(ids))}</div>
       </div>
       <div class="suggestion__side">
